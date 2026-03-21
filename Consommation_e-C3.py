@@ -1,6 +1,6 @@
 import streamlit as st
 import subprocess, sys, os
-import json  # Ajout de l'import pour lire le JSON
+import json 
 
 # --- VÉRIFICATION DU MOT DE PASSE ---
 def check_password():
@@ -61,11 +61,11 @@ if check_password():
         m = total_min % 60
         return f"{h}:{m:02d}"
 
-# --- NOUVELLE FONCTION DE CONNEXION ---
-def connecter_sheet():
+    # --- NOUVELLE FONCTION DE CONNEXION ---
+    def connecter_sheet():
         scope = ["https://www.googleapis.com/auth/spreadsheets"]
         try:
-            # On reconstruit le dictionnaire à partir des secrets individuels
+            # Reconstruction propre du dictionnaire depuis les secrets individuels
             info_json = {
                 "type": st.secrets["gcp_service_account"]["type"],
                 "project_id": st.secrets["gcp_service_account"]["project_id"],
