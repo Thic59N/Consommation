@@ -64,6 +64,7 @@ with tab_saisie:
             derniere_ligne = toutes_valeurs[-1]
             num_ligne_active = len(toutes_valeurs)
             
+            # Vérification si une charge est déjà commencée (colonne B remplie mais colonne D vide ou manquante)
             if len(derniere_ligne) > 1 and derniere_ligne[1] != "" and (len(derniere_ligne) <= 3 or derniere_ligne[3] == ""):
                 charge_en_cours = True
                 donnees_derniere_ligne = derniere_ligne
@@ -84,13 +85,13 @@ with tab_saisie:
             date_fin = st.date_input("Date de fin de charge", datetime.now(), format="DD/MM/YYYY")
             p_fin_saisi = st.number_input("% Batterie final", 0, 100, value=None, placeholder="Ex: 85")
             temps = st.text_input("Temps de recharge (ex: 3:37)", placeholder="H:MM")
-            energie = st.number_input("Énergie ajoutée (kwh)", min_value=0.0, step=0.1, value=None)
+            energie = st.number_input("Énergie ajoutée (kWh)", min_value=0.0, step=0.1, value=None)
             
-            with st.expander("📍 Modifier Lieu et Prix kwh (Optionnel)"):
+            with st.expander("📍 Modifier Lieu et Prix kWh (Optionnel)"):
                 options_lieux = ["Maison", "Borne Publique", "Ionity", "Tesla Supercharger", "Autre..."]
                 lieu_selection = st.selectbox("Lieu de recharge", options_lieux)
                 lieu_precis = st.text_input("Si Autre, précisez le lieu")
-                prix_kwh = st.number_input("Coût en € / kwh", min_value=0.0, value=0.1579, format="%.4f", step=0.0001)
+                prix_kwh = st.number_input("Coût en € / kWh", min_value=0.0, value=0.1579, format="%.4f", step=0.0001)
 
             if st.form_submit_button("✅ Enregistrer la fin de charge"):
                 manquants = []
@@ -117,25 +118,46 @@ with tab_saisie:
 
     else:
         st.subheader("🚀 Lancer une nouvelle charge")
-        km_defaut = 0
+        
+        # --- CALCUL DU KM PRÉCÉDENT ET SUGGÉRÉ ---
+        km_precedent = 0
+        km_suggere = 0
         if len(toutes_valeurs) > 3:
-            dernier_km = extraire_nombre(toutes_valeurs[-1][1])
-            km_defaut = int(dernier_km // 100) * 100
+            derniere_valeur_km = toutes_valeurs[-1][1]
+            km_precedent = extraire_nombre(derniere_valeur_km)
+            if km_precedent > 0:
+                km_suggere = int(km_precedent // 100) * 100
 
         with st.form("formulaire_debut"):
             date_j = st.date_input("Date de début de charge", datetime.now(), format="DD/MM/YYYY")
-            km_actuel = st.number_input("Kilométrage au compteur", min_value=0, value=km_defaut)
-            p_dep_saisi = st.number_input("% Batterie au départ", 0, 100, value=20)
+            
+            # Champ Kilométrage
+            km_actuel = st.number_input("Kilométrage au compteur", min_value=0, value=int(km_suggere))
+            
+            # Champ % Batterie (Saisie obligatoire, pas de défaut)
+            p_dep_saisi = st.number_input("% Batterie au départ", 0, 100, value=None, placeholder="Ex: 20")
             
             if st.form_submit_button("🚀 Créer la nouvelle ligne"):
-                if km_actuel > 0:
+                erreurs = []
+                
+                # Vérification Batterie obligatoire
+                if p_dep_saisi is None:
+                    erreurs.append("Le % de batterie au départ est obligatoire.")
+                
+                # Vérification Kilométrage (doit être supérieur au précédent réel)
+                if km_actuel <= km_precedent:
+                    erreurs.append(f"Le kilométrage doit être supérieur au précédent ({int(km_precedent)} km).")
+                
+                if erreurs:
+                    for err in erreurs:
+                        st.error(err)
+                else:
+                    # Tout est bon, on enregistre
                     p_dep_decimal = p_dep_saisi / 100
                     nouvelle_ligne = [date_j.strftime("%d/%m/%Y"), km_actuel, "", p_dep_decimal]
                     sheet.append_row(nouvelle_ligne, value_input_option="USER_ENTERED")
-                    st.success("Ligne créée !")
+                    st.success("Nouvelle charge enregistrée !")
                     st.rerun()
-                else:
-                    st.error("Veuillez indiquer le kilométrage.")
 
 with tab_visualisation:
     st.header(f"📊 Tableau de bord - {annee}")
@@ -148,7 +170,7 @@ with tab_visualisation:
                 if len(valeurs) > 3:
                     df = pd.DataFrame(valeurs[3:], columns=valeurs[2])
                     
-                    # --- RECONSTRUCTION DES SCORE CARDS ---
+                    # --- SCORE CARDS ---
                     col_b_brute = [r[1] for r in valeurs[3:] if len(r) > 1]
                     km_total = 0
                     for val in reversed(col_b_brute):
