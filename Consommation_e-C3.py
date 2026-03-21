@@ -1,8 +1,8 @@
 import subprocess, sys, os
 
-# --- AUTO-INSTALLATION ---
+# --- AUTO-INSTALLATION (Correction du nom de la variable) ---
 def install_requirements():
-    if os.environ.get("STREAM_LIMIT_RUNTIME_EXECUTION_MODE") is None:
+    if os.environ.get("STREAMLIT_RUNTIME_EXECUTION_MODE") is None:
         packages = ["streamlit", "gspread", "google-auth", "pandas"]
         for p in packages:
             try:
@@ -80,18 +80,15 @@ with tab_saisie:
         st.info(f"🔋 Débutée le {donnees_derniere_ligne[0]} à {donnees_derniere_ligne[1]} km")
 
         date_fin = st.date_input("Date de fin de charge", datetime.now(), format="DD/MM/YYYY")
-        # % Batterie Final Obligatoire
         p_fin_saisi = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Obligatoire")
 
         st.divider()
 
-        # --- CALCULATRICES OCTOPUS ---
         st.markdown("### 🧮 Calculatrices Octopus")
         col_t, col_e = st.columns(2)
         
         with col_t:
             st.markdown("**⏱️ Sessions de Temps (H:MM)**")
-            # Sess 1 Obligatoire
             t1 = st.text_input("Sess. 1 *", value="", placeholder="Obligatoire (ex: 2:38)", key="calc_t1")
             t2 = st.text_input("Sess. 2", value="", placeholder="Optionnel", key="calc_t2")
             t3 = st.text_input("Sess. 3", value="", placeholder="Optionnel", key="calc_t3")
@@ -109,7 +106,6 @@ with tab_saisie:
 
         with col_e:
             st.markdown("**🔌 Sessions d'Énergie (kWh)**")
-            # kWh 1 Obligatoire
             en1 = st.number_input("kWh 1 *", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Obligatoire", key="calc_e1")
             en2 = st.number_input("kWh 2", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Optionnel", key="calc_e2")
             en3 = st.number_input("kWh 3", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Optionnel", key="calc_e3")
@@ -127,7 +123,6 @@ with tab_saisie:
 
         st.divider()
 
-        # --- VALIDATION FINALE ---
         t_final = st.session_state.get('temps_final', "0:00")
         e_final = st.session_state.get('energie_finale', 0.0)
         
@@ -140,13 +135,12 @@ with tab_saisie:
                 prix_kwh = st.number_input("Coût €/kWh", value=0.1579, format="%.4f")
 
             if st.form_submit_button("✅ TOUT ENREGISTRER DANS SHEETS"):
-                # Vérification ultime des 3 piliers obligatoires
                 if p_fin_saisi is None:
                     st.error("⚠️ Le % de Batterie final est obligatoire.")
-                elif not t1 or ":" not in t1 or 'temps_final' not in st.session_state:
-                    st.error("⚠️ La Session 1 de temps est obligatoire (et doit être validée).")
-                elif en1 is None or en1 == 0.0 or 'energie_finale' not in st.session_state:
-                    st.error("⚠️ Le kWh 1 est obligatoire (et doit être validé).")
+                elif 'temps_final' not in st.session_state:
+                    st.error("⚠️ Merci de valider le temps.")
+                elif 'energie_finale' not in st.session_state:
+                    st.error("⚠️ Merci de valider l'énergie.")
                 else:
                     lieu_final = lieu_precis if (lieu_selection == "Autre..." and lieu_precis) else lieu_selection
                     sheet.update_cell(num_ligne_active, 1, date_fin.strftime("%d/%m/%Y"))
@@ -160,11 +154,9 @@ with tab_saisie:
                         if key in st.session_state: del st.session_state[key]
                     
                     st.success("Données enregistrées !")
-                    st.balloons()
                     st.rerun()
 
     else:
-        # Bloc création nouvelle charge (KM et Batt départ obligatoires)
         st.subheader("🚀 Lancer une nouvelle charge")
         km_precedent = 0
         km_suggere = 0
@@ -182,4 +174,50 @@ with tab_saisie:
                     sheet.append_row([date_j.strftime("%d/%m/%Y"), km_actuel, "", p_dep/100], value_input_option="USER_ENTERED")
                     st.rerun()
                 else:
-                    st.error("Vérifiez km (> précédent) et batterie.")
+                    st.error("Vérifiez km et batterie.")
+
+with tab_visualisation:
+    st.header(f"📊 Dashboard {annee}")
+    doc = connecter_sheet()
+    if doc:
+        try:
+            sheet = doc.worksheet(f"Recharge {annee}")
+            valeurs = sheet.get_all_values()
+            if len(valeurs) > 3:
+                # Création du DataFrame
+                df = pd.DataFrame(valeurs[3:], columns=valeurs[2])
+                
+                # Calculs pour les indicateurs
+                col_b_brute = [r[1] for r in valeurs[3:] if len(r) > 1]
+                km_total = 0
+                for val in reversed(col_b_brute):
+                    n = extraire_nombre(val)
+                    if n > 0: 
+                        km_total = n
+                        break
+                
+                col_c_clean = [extraire_nombre(r[2]) for r in valeurs[3:] if len(r) > 2]
+                somme_km = sum(col_c_clean)
+                col_i_clean = [extraire_nombre(r[8]) for r in valeurs[3:] if len(r) > 8]
+                conso_valides = [v for v in col_i_clean if v > 0]
+                avg_conso = sum(conso_valides) / len(conso_valides) if conso_valides else 0.0
+
+                # Récupération J1 pour le coût
+                j1_raw = sheet.acell('J1').value
+                j1_val = extraire_nombre(j1_raw)
+                cout_100 = avg_conso * j1_val
+
+                # Affichage des métriques
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Km Total", f"{km_total:,.0f} km".replace(',', ' '))
+                c2.metric("Somme Km", f"{somme_km:,.0f} km".replace(',', ' '))
+                c3.metric("Moy. Conso", f"{avg_conso:.2f} kWh/100")
+                c4.metric("Coût/100km", f"{cout_100:.2f} €")
+                
+                st.divider()
+                st.subheader("Détail des recharges (du plus récent au plus ancien)")
+                st.dataframe(df[::-1], use_container_width=True)
+            else:
+                st.warning("Aucune donnée trouvée dans la feuille pour le moment.")
+        except Exception as e: 
+            st.error(f"Erreur lors de la lecture des données : {e}")
