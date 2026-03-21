@@ -62,20 +62,23 @@ if check_password():
         return f"{h}:{m:02d}"
 
 # --- NOUVELLE FONCTION DE CONNEXION ---
-    def connecter_sheet():
-        scope = ["https://www.googleapis.com/auth/spreadsheets"] # <--- Vérifie l'espace ici
+def connecter_sheet():
+        scope = ["https://www.googleapis.com/auth/spreadsheets"]
         try:
-            raw_data = st.secrets["gcp_service_account"]["json_data"]
-            
-            if isinstance(raw_data, str):
-                info_json = json.loads(raw_data)
-            else:
-                info_json = dict(raw_data)
-                
-            # Nettoyage de la clé (le correctif de tout à l'heure)
-            if "private_key" in info_json:
-                info_json["private_key"] = info_json["private_key"].replace("\\n", "\n")
-                    
+            # On reconstruit le dictionnaire à partir des secrets individuels
+            info_json = {
+                "type": st.secrets["gcp_service_account"]["type"],
+                "project_id": st.secrets["gcp_service_account"]["project_id"],
+                "private_key_id": st.secrets["gcp_service_account"]["private_key_id"],
+                "private_key": st.secrets["gcp_service_account"]["private_key"].replace("\\n", "\n"),
+                "client_email": st.secrets["gcp_service_account"]["client_email"],
+                "client_id": st.secrets["gcp_service_account"]["client_id"],
+                "auth_uri": st.secrets["gcp_service_account"]["auth_uri"],
+                "token_uri": st.secrets["gcp_service_account"]["token_uri"],
+                "auth_provider_x509_cert_url": st.secrets["gcp_service_account"]["auth_provider_x509_cert_url"],
+                "client_x509_cert_url": st.secrets["gcp_service_account"]["client_x509_cert_url"],
+                "universe_domain": st.secrets["gcp_service_account"]["universe_domain"]
+            }
             creds = Credentials.from_service_account_info(info_json, scopes=scope)
             return gspread.authorize(creds).open_by_key("12lz9BdZspahJwwc4K85pe5eJhYGbK_79dNDErjUX-Og")
         except Exception as e:
