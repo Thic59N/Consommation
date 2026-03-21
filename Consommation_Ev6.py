@@ -1,6 +1,6 @@
 import subprocess, sys, os
 
-# --- AUTO-INSTALLATION (Correction du nom de la variable) ---
+# --- AUTO-INSTALLATION ---
 def install_requirements():
     if os.environ.get("STREAMLIT_RUNTIME_EXECUTION_MODE") is None:
         packages = ["streamlit", "gspread", "google-auth", "pandas"]
@@ -47,7 +47,8 @@ def connecter_sheet():
             creds = Credentials.from_service_account_file(path_json, scopes=scope)
         else:
             creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
-        return gspread.authorize(creds).open_by_key("1O2bv779GffFziT9TKcfLgRtYLahKsJ7liNncQM7j-gg")
+        # MISE À JOUR DE LA CLÉ DU DOCUMENT ICI
+        return gspread.authorize(creds).open_by_key("12lz9BdZspahJwwc4K85pe5eJhYGbK_79dNDErjUX-Og")
     except Exception as e:
         st.error(f"Erreur connexion : {e}")
         return None
@@ -184,10 +185,8 @@ with tab_visualisation:
             sheet = doc.worksheet(f"Recharge {annee}")
             valeurs = sheet.get_all_values()
             if len(valeurs) > 3:
-                # Création du DataFrame
                 df = pd.DataFrame(valeurs[3:], columns=valeurs[2])
                 
-                # Calculs pour les indicateurs
                 col_b_brute = [r[1] for r in valeurs[3:] if len(r) > 1]
                 km_total = 0
                 for val in reversed(col_b_brute):
@@ -202,22 +201,20 @@ with tab_visualisation:
                 conso_valides = [v for v in col_i_clean if v > 0]
                 avg_conso = sum(conso_valides) / len(conso_valides) if conso_valides else 0.0
 
-                # Récupération J1 pour le coût
                 j1_raw = sheet.acell('J1').value
                 j1_val = extraire_nombre(j1_raw)
                 cout_100 = avg_conso * j1_val
 
-                # Affichage des métriques
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Km Total", f"{km_total:,.0f} km".replace(',', ' '))
                 c2.metric("Somme Km", f"{somme_km:,.0f} km".replace(',', ' '))
-                c3.metric("Moy. Conso", f"{avg_conso:.2f} kwh/100")
+                c3.metric("Moy. Conso", f"{avg_conso:.2f} kWh/100")
                 c4.metric("Coût/100km", f"{cout_100:.2f} €")
                 
                 st.divider()
                 st.subheader("Détail des recharges (du plus récent au plus ancien)")
                 st.dataframe(df[::-1], use_container_width=True)
             else:
-                st.warning("Aucune donnée trouvée dans la feuille pour le moment.")
+                st.warning("Aucune donnée trouvée.")
         except Exception as e: 
-            st.error(f"Erreur lors de la lecture des données : {e}")
+            st.error(f"Erreur : {e}")
