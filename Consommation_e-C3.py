@@ -65,7 +65,8 @@ if check_password():
     def connecter_sheet():
         scope = ["https://www.googleapis.com/auth/spreadsheets"]
         try:
-            # Reconstruction propre du dictionnaire depuis les secrets individuels
+            # On récupère les infos depuis st.secrets (partie privée de Streamlit)
+            # NE JAMAIS ÉCRIRE LA CLÉ ICI
             info_json = {
                 "type": st.secrets["gcp_service_account"]["type"],
                 "project_id": st.secrets["gcp_service_account"]["project_id"],
@@ -82,7 +83,8 @@ if check_password():
             creds = Credentials.from_service_account_info(info_json, scopes=scope)
             return gspread.authorize(creds).open_by_key("12lz9BdZspahJwwc4K85pe5eJhYGbK_79dNDErjUX-Og")
         except Exception as e:
-            st.error(f"Erreur connexion : {e}")
+            # On affiche l'erreur, mais jamais le contenu de la clé !
+            st.error("Erreur de connexion aux Sheets. Vérifiez vos Secrets Streamlit.")
             return None
 
     # --- CONFIG PAGE ---
