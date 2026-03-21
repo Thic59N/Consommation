@@ -1,3 +1,33 @@
+import streamlit as st
+import subprocess, sys, os
+
+# --- VÉRIFICATION DU MOT DE PASSE (SÉCURISÉE) ---
+def check_password():
+    # On récupère le mot de passe caché dans les "Secrets" de Streamlit
+    # Si tu ne l'as pas encore créé, l'app demandera une config.
+    try:
+        password_secret = st.secrets["password"]["access_key"]
+    except:
+        st.error("Configuration du mot de passe manquante dans les Secrets Streamlit.")
+        return False
+
+    if "password_correct" not in st.session_state:
+        st.subheader("🔐 Accès Restreint")
+        pwd = st.text_input("Entrez le mot de passe :", type="password")
+        if st.button("Se connecter"):
+            if pwd == password_secret:
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("❌ Mot de passe incorrect")
+        return False
+    return True
+
+if check_password():
+    # --- ICI LE RESTE DE TON CODE ---
+    # (Tes imports, tes fonctions de calcul, etc.)
+
+
 import subprocess, sys, os
 
 # --- AUTO-INSTALLATION (Correction du nom de la variable) ---
