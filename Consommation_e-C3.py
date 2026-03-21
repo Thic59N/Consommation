@@ -63,22 +63,25 @@ if check_password():
 
     # --- NOUVELLE FONCTION DE CONNEXION ---
     def connecter_sheet():
-        scope = ["https://www.googleapis.com/auth/spreadsheets"]
-        try:
-            # On récupère la donnée "json_data" des secrets
-            raw_data = st.secrets["gcp_service_account"]["json_data"]
+    scope = ["https://www.googleapis.com/auth/spreadsheets"]
+    try:
+        raw_data = st.secrets["gcp_service_account"]["json_data"]
+        
+        if isinstance(raw_data, str):
+            info_json = json.loads(raw_data)
+        else:
+            info_json = dict(raw_data)
             
-            # Si c'est du texte, on le transforme en dictionnaire JSON
-            if isinstance(raw_data, str):
-                info_json = json.loads(raw_data)
-            else:
-                info_json = raw_data
+        # --- NETTOYAGE CRUCIAL DE LA CLÉ ---
+        if "private_key" in info_json:
+            # On remplace les doubles antislashes par des simples pour Google
+            info_json["private_key"] = info_json["private_key"].replace("\\n", "\n")
                 
-            creds = Credentials.from_service_account_info(info_json, scopes=scope)
-            return gspread.authorize(creds).open_by_key("12lz9BdZspahJwwc4K85pe5eJhYGbK_79dNDErjUX-Og")
-        except Exception as e:
-            st.error(f"Erreur connexion : {e}")
-            return None
+        creds = Credentials.from_service_account_info(info_json, scopes=scope)
+        return gspread.authorize(creds).open_by_key("12lz9BdZspahJwwc4K85pe5eJhYGbK_79dNDErjUX-Og")
+    except Exception as e:
+        st.error(f"Erreur connexion : {e}")
+        return None
 
     # --- CONFIG PAGE ---
     st.set_page_config(page_title="Consommation Voitures", layout="wide")
