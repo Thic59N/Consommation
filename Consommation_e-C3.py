@@ -211,7 +211,7 @@ with tab_visualisation:
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Km Total", f"{km_total:,.0f} km".replace(',', ' '))
                 c2.metric("Somme Km", f"{somme_km:,.0f} km".replace(',', ' '))
-                c3.metric("Moy. Conso", f"{avg_conso:.2f} kWh/100")
+                c3.metric("Moy. Conso", f"{avg_conso:.2f} kwh/100")
                 c4.metric("Coût/100km", f"{cout_100:.2f} €")
                 
                 st.divider()
