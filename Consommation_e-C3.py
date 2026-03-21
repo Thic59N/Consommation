@@ -1,5 +1,6 @@
 import streamlit as st
 import subprocess, sys, os
+import json  # Ajout de l'import pour lire le JSON
 
 # --- VÉRIFICATION DU MOT DE PASSE ---
 def check_password():
@@ -60,10 +61,20 @@ if check_password():
         m = total_min % 60
         return f"{h}:{m:02d}"
 
+    # --- NOUVELLE FONCTION DE CONNEXION ---
     def connecter_sheet():
         scope = ["https://www.googleapis.com/auth/spreadsheets"]
         try:
-            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+            # On récupère la donnée "json_data" des secrets
+            raw_data = st.secrets["gcp_service_account"]["json_data"]
+            
+            # Si c'est du texte, on le transforme en dictionnaire JSON
+            if isinstance(raw_data, str):
+                info_json = json.loads(raw_data)
+            else:
+                info_json = raw_data
+                
+            creds = Credentials.from_service_account_info(info_json, scopes=scope)
             return gspread.authorize(creds).open_by_key("12lz9BdZspahJwwc4K85pe5eJhYGbK_79dNDErjUX-Og")
         except Exception as e:
             st.error(f"Erreur connexion : {e}")
@@ -88,7 +99,6 @@ if check_password():
             if len(toutes_valeurs) >= 4:
                 derniere_ligne = toutes_valeurs[-1]
                 num_ligne_active = len(toutes_valeurs)
-                # Si km départ rempli mais pas batterie finale (col 4 vide)
                 if len(derniere_ligne) > 1 and derniere_ligne[1] != "" and (len(derniere_ligne) <= 3 or (len(derniere_ligne) > 3 and (derniere_ligne[3] == "" or derniere_ligne[3] is None))):
                     charge_en_cours = True
                     donnees_derniere_ligne = derniere_ligne
