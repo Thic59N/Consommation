@@ -2,7 +2,7 @@ import subprocess, sys, os
 
 # --- AUTO-INSTALLATION ---
 def install_requirements():
-    if os.environ.get("STREAMLIT_RUNTIME_EXECUTION_MODE") is None:
+    if os.environ.get("STREAM_LIMIT_RUNTIME_EXECUTION_MODE") is None:
         packages = ["streamlit", "gspread", "google-auth", "pandas"]
         for p in packages:
             try:
@@ -79,49 +79,60 @@ with tab_saisie:
         st.subheader("🏁 Terminer la charge")
         st.info(f"🔋 Débutée le {donnees_derniere_ligne[0]} à {donnees_derniere_ligne[1]} km")
 
-        # --- 1. SAISIE VERTICALE (Date puis Batterie) ---
         date_fin = st.date_input("Date de fin de charge", datetime.now(), format="DD/MM/YYYY")
-        p_fin_saisi = st.number_input("% Batterie final", 0, 100, value=None, placeholder="Ex: 80")
+        # % Batterie Final Obligatoire
+        p_fin_saisi = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Obligatoire")
 
         st.divider()
 
-        # --- 2. CALCULATRICES OCTOPUS ---
+        # --- CALCULATRICES OCTOPUS ---
         st.markdown("### 🧮 Calculatrices Octopus")
         col_t, col_e = st.columns(2)
         
         with col_t:
             st.markdown("**⏱️ Sessions de Temps (H:MM)**")
-            t1 = st.text_input("Sess. 1", "0:00", key="calc_t1")
-            t2 = st.text_input("Sess. 2", "0:00", key="calc_t2")
-            t3 = st.text_input("Sess. 3", "0:00", key="calc_t3")
-            t4 = st.text_input("Sess. 4", "0:00", key="calc_t4")
+            # Sess 1 Obligatoire
+            t1 = st.text_input("Sess. 1 *", value="", placeholder="Obligatoire (ex: 2:38)", key="calc_t1")
+            t2 = st.text_input("Sess. 2", value="", placeholder="Optionnel", key="calc_t2")
+            t3 = st.text_input("Sess. 3", value="", placeholder="Optionnel", key="calc_t3")
+            t4 = st.text_input("Sess. 4", value="", placeholder="Optionnel", key="calc_t4")
             
-            total_min = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
-            temps_calcule = minutes_vers_temps(total_min)
             if st.button("🔄 Valider le Temps Total"):
-                st.session_state['temps_final'] = temps_calcule
-                st.success(f"Temps retenu : {temps_calcule}")
+                if not t1 or ":" not in t1:
+                    st.error("La Session 1 est obligatoire au format H:MM")
+                else:
+                    total_min = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
+                    st.session_state['temps_final'] = minutes_vers_temps(total_min)
+
+            if 'temps_final' in st.session_state:
+                st.success(f"Temps retenu : **{st.session_state['temps_final']}**")
 
         with col_e:
             st.markdown("**🔌 Sessions d'Énergie (kWh)**")
-            en1 = st.number_input("kWh 1", 0.0, step=0.01, format="%.2f", key="calc_e1")
-            en2 = st.number_input("kWh 2", 0.0, step=0.01, format="%.2f", key="calc_e2")
-            en3 = st.number_input("kWh 3", 0.0, step=0.01, format="%.2f", key="calc_e3")
-            en4 = st.number_input("kWh 4", 0.0, step=0.01, format="%.2f", key="calc_e4")
+            # kWh 1 Obligatoire
+            en1 = st.number_input("kWh 1 *", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Obligatoire", key="calc_e1")
+            en2 = st.number_input("kWh 2", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Optionnel", key="calc_e2")
+            en3 = st.number_input("kWh 3", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Optionnel", key="calc_e3")
+            en4 = st.number_input("kWh 4", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Optionnel", key="calc_e4")
             
-            energie_totale = round(en1 + en2 + en3 + en4, 2)
             if st.button("🔄 Valider l'Énergie Totale"):
-                st.session_state['energie_finale'] = energie_totale
-                st.success(f"Énergie retenue : {energie_totale} kWh")
+                if en1 is None or en1 == 0.0:
+                    st.error("Le kWh 1 est obligatoire")
+                else:
+                    tot_e = sum([en if en is not None else 0.0 for en in [en1, en2, en3, en4]])
+                    st.session_state['energie_finale'] = round(tot_e, 2)
+
+            if 'energie_finale' in st.session_state:
+                st.success(f"Énergie retenue : **{st.session_state['energie_finale']} kWh**")
 
         st.divider()
 
-        # --- 3. VALIDATION FINALE ---
+        # --- VALIDATION FINALE ---
         t_final = st.session_state.get('temps_final', "0:00")
         e_final = st.session_state.get('energie_finale', 0.0)
         
         with st.form("formulaire_final_save"):
-            st.write(f"📊 **Résumé :** Fin le {date_fin.strftime('%d/%m/%Y')} | Batterie {p_fin_saisi}% | {t_final} | {e_final} kWh")
+            st.write(f"📊 **Résumé :** Batterie {p_fin_saisi}% | Temps {t_final} | Énergie {e_final} kWh")
             
             with st.expander("📍 Lieu et Prix (Optionnel)"):
                 lieu_selection = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla Supercharger", "Autre..."])
@@ -129,13 +140,15 @@ with tab_saisie:
                 prix_kwh = st.number_input("Coût €/kWh", value=0.1579, format="%.4f")
 
             if st.form_submit_button("✅ TOUT ENREGISTRER DANS SHEETS"):
+                # Vérification ultime des 3 piliers obligatoires
                 if p_fin_saisi is None:
                     st.error("⚠️ Le % de Batterie final est obligatoire.")
-                elif t_final == "0:00" or e_final == 0.0:
-                    st.error("⚠️ Utilisez les boutons 'Valider' des calculatrices pour confirmer les totaux.")
+                elif not t1 or ":" not in t1 or 'temps_final' not in st.session_state:
+                    st.error("⚠️ La Session 1 de temps est obligatoire (et doit être validée).")
+                elif en1 is None or en1 == 0.0 or 'energie_finale' not in st.session_state:
+                    st.error("⚠️ Le kWh 1 est obligatoire (et doit être validé).")
                 else:
                     lieu_final = lieu_precis if (lieu_selection == "Autre..." and lieu_precis) else lieu_selection
-                    
                     sheet.update_cell(num_ligne_active, 1, date_fin.strftime("%d/%m/%Y"))
                     sheet.update_cell(num_ligne_active, 4, p_fin_saisi / 100)
                     sheet.update_cell(num_ligne_active, 5, t_final)
@@ -151,6 +164,7 @@ with tab_saisie:
                     st.rerun()
 
     else:
+        # Bloc création nouvelle charge (KM et Batt départ obligatoires)
         st.subheader("🚀 Lancer une nouvelle charge")
         km_precedent = 0
         km_suggere = 0
@@ -161,24 +175,11 @@ with tab_saisie:
         with st.form("form_debut"):
             date_j = st.date_input("Date de début", datetime.now(), format="DD/MM/YYYY")
             km_actuel = st.number_input("Kilométrage au compteur", value=int(km_suggere))
-            p_dep = st.number_input("% Batterie au départ", 0, 100, value=None, placeholder="Obligatoire")
+            p_dep = st.number_input("% Batterie au départ *", 0, 100, value=None, placeholder="Obligatoire")
             
             if st.form_submit_button("🚀 Créer la ligne"):
                 if p_dep is not None and km_actuel > km_precedent:
                     sheet.append_row([date_j.strftime("%d/%m/%Y"), km_actuel, "", p_dep/100], value_input_option="USER_ENTERED")
                     st.rerun()
                 else:
-                    st.error("Vérifiez km et batterie.")
-
-with tab_visualisation:
-    st.header(f"📊 Dashboard {annee}")
-    if st.button("🔄 Actualiser les données"):
-        doc = connecter_sheet()
-        if doc:
-            try:
-                sheet = doc.worksheet(f"Recharge {annee}")
-                valeurs = sheet.get_all_values()
-                if len(valeurs) > 3:
-                    df = pd.DataFrame(valeurs[3:], columns=valeurs[2])
-                    st.dataframe(df[::-1], use_container_width=True)
-            except Exception as e: st.error(str(e))
+                    st.error("Vérifiez km (> précédent) et batterie.")
