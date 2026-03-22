@@ -65,13 +65,18 @@ if check_password():
     def connecter_sheet():
         scope = ["https://www.googleapis.com/auth/spreadsheets"]
         try:
-            # On récupère les infos depuis st.secrets (partie privée de Streamlit)
-            # NE JAMAIS ÉCRIRE LA CLÉ ICI
+            # On récupère la clé brute
+            pk = st.secrets["gcp_service_account"]["private_key"]
+            
+            # Nettoyage automatique pour Streamlit
+            if "\\n" in pk:
+                pk = pk.replace("\\n", "\n")
+            
             info_json = {
                 "type": st.secrets["gcp_service_account"]["type"],
                 "project_id": st.secrets["gcp_service_account"]["project_id"],
                 "private_key_id": st.secrets["gcp_service_account"]["private_key_id"],
-                "private_key": st.secrets["gcp_service_account"]["private_key"].replace("\\n", "\n"),
+                "private_key": pk,
                 "client_email": st.secrets["gcp_service_account"]["client_email"],
                 "client_id": st.secrets["gcp_service_account"]["client_id"],
                 "auth_uri": st.secrets["gcp_service_account"]["auth_uri"],
@@ -83,8 +88,8 @@ if check_password():
             creds = Credentials.from_service_account_info(info_json, scopes=scope)
             return gspread.authorize(creds).open_by_key("12lz9BdZspahJwwc4K85pe5eJhYGbK_79dNDErjUX-Og")
         except Exception as e:
-            # On affiche l'erreur, mais jamais le contenu de la clé !
-            st.error("Erreur de connexion aux Sheets. Vérifiez vos Secrets Streamlit.")
+            # On affiche l'erreur précise pour débugger
+            st.error(f"Détail technique : {e}")
             return None
 
     # --- CONFIG PAGE ---
