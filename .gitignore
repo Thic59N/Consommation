@@ -183,3 +183,9 @@ cython_debug/
 # Google Cloud Credentials (SÉCURITÉ)
 credentials.json
 .streamlit/secrets.toml
+
+Ignorer les fichiers temporaires Python
+
+pycache/
+*.pyc
+.env
