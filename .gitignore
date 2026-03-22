@@ -182,8 +182,9 @@ cython_debug/
 
 Ignorer les secrets locaux (MDP et Clés Google)
 
-.streamlit/
+# Google Cloud Credentials (SÉCURITÉ)
 credentials.json
+.streamlit/secrets.toml
 
 Ignorer les fichiers temporaires Python
 
