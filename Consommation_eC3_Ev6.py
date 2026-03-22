@@ -72,8 +72,8 @@ def minutes_vers_temps(total_min):
 def connecter_sheet():
     scope = ["https://www.googleapis.com/auth/spreadsheets"]
     
-    # ID corrigé (celui qui fonctionnait précédemment pour la ë-C3)
-    sheet_id = "1O2bv779GffFziT9TKcfLgRtYLahKsJ7liNncQM7j-gg"
+    # ID spécifique pour la Citroën ë-C3
+    sheet_id = "1HclA22T81NshU2T9-H-uSshS8i3POfA6P6_wI2EExz8"
     
     try:
         if "gcp_service_account" in st.secrets:
@@ -86,11 +86,7 @@ def connecter_sheet():
                 st.error("⚠️ Identifiants Google Sheets manquants.")
                 return None
         
-        client = gspread.authorize(creds)
-        return client.open_by_key(sheet_id)
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error(f"🚫 Erreur 404 : Fichier Google Sheet introuvable. Vérifiez l'ID et que le fichier est PARTAGÉ avec l'email du compte de service.")
-        return None
+        return gspread.authorize(creds).open_by_key(sheet_id)
     except Exception as e:
         st.error(f"Erreur connexion : {e}")
         return None
@@ -114,7 +110,7 @@ with col_txt:
 
 with col_a:
     st.markdown("<div style='margin-top: 15px;'>", unsafe_allow_html=True)
-    annee = st.selectbox("Année", ["2025", "2026"], index=0, label_visibility="collapsed")
+    annee = st.selectbox("Année", ["2025", "2026"], index=1, label_visibility="collapsed")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_d:
@@ -141,8 +137,7 @@ with tab_saisie:
             if len(toutes_valeurs) >= 4:
                 derniere_ligne = toutes_valeurs[-1]
                 num_ligne_active = len(toutes_valeurs)
-                # Détection charge en cours : km présents mais pas de % fin (colonne 4) ou de kWh (colonne 6)
-                if len(derniere_ligne) > 1 and derniere_ligne[1] != "" and (len(derniere_ligne) <= 5 or derniere_ligne[5] == ""):
+                if len(derniere_ligne) > 1 and derniere_ligne[1] != "" and (len(derniere_ligne) <= 3 or (len(derniere_ligne) > 3 and (derniere_ligne[3] == "" or derniere_ligne[3] is None))):
                     charge_en_cours = True
                     donnees_derniere_ligne = derniere_ligne
         except Exception as e:
@@ -251,5 +246,5 @@ with tab_visualisation:
                 st.divider()
                 df = pd.DataFrame(valeurs[3:], columns=valeurs[2])
                 st.dataframe(df[::-1], use_container_width=True)
-        except Exception as e:
-            st.warning(f"Données Sheets introuvables ou erreur : {e}")
+        except:
+            st.warning("Données Sheets introuvables.")
