@@ -237,3 +237,5 @@ with tab_visualisation:
                 st.dataframe(df[::-1], use_container_width=True)
         except:
             st.warning("Erreur lors de la lecture des données.")
+
+            #ok, Fonctionne
