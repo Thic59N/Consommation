@@ -1,5 +1,4 @@
 import subprocess, sys, os
-import json
 
 # --- AUTO-INSTALLATION ---
 def install_requirements():
@@ -35,7 +34,7 @@ def check_password():
     st.title("🔐 Accès Citroën ë-C3")
     password = st.text_input("Veuillez saisir le mot de passe :", type="password")
     
-    # Récupération sécurisée via les secrets Streamlit
+    # Récupération sécurisée du mot de passe via les secrets Streamlit
     target_password = st.secrets.get("auth", {}).get("password", "admin") 
 
     if st.button("Connexion"):
@@ -72,32 +71,28 @@ def minutes_vers_temps(total_min):
 # --- CONNEXION ---
 def connecter_sheet():
     scope = ["https://www.googleapis.com/auth/spreadsheets"]
-    sheet_id = "1HclA22T81NshU2T9-H-uSshS8i3POfA6P6_wI2EExz8"
+    
+    # ID extrait de votre capture d'écran pour la ë-C3
+    sheet_id = "1O2bv779GffFziT9TKcfLgRtYLahKsJ7liNncQM7j-gg"
     
     try:
         if "gcp_service_account" in st.secrets:
-            # Mode Cloud / Secrets
-            info = dict(st.secrets["gcp_service_account"])
-            if "private_key" in info:
-                info["private_key"] = info["private_key"].replace("\\n", "\n")
-            creds = Credentials.from_service_account_info(info, scopes=scope)
+            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
         else:
-            # Mode Local
             path_json = os.path.join(os.path.dirname(__file__), "credentials.json")
             if os.path.exists(path_json):
-                # On lit manuellement le JSON pour nettoyer la clé si besoin
-                with open(path_json, 'r') as f:
-                    info = json.load(f)
-                if "private_key" in info:
-                    info["private_key"] = info["private_key"].replace("\\n", "\n")
-                creds = Credentials.from_service_account_info(info, scopes=scope)
+                creds = Credentials.from_service_account_file(path_json, scopes=scope)
             else:
-                st.error("⚠️ Fichier credentials.json introuvable en local.")
+                st.error("⚠️ Fichier credentials.json introuvable.")
                 return None
         
-        return gspread.authorize(creds).open_by_key(sheet_id)
+        client = gspread.authorize(creds)
+        return client.open_by_key(sheet_id)
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error(f"🚫 Erreur 404 : Feuille introuvable. Vérifiez l'ID et le PARTAGE avec le compte de service.")
+        return None
     except Exception as e:
-        st.error(f"Erreur connexion : {e}")
+        st.error(f"Erreur de connexion : {e}")
         return None
 
 # --- UI PRINCIPALE (BANNER) ---
@@ -119,7 +114,7 @@ with col_txt:
 
 with col_a:
     st.markdown("<div style='margin-top: 15px;'>", unsafe_allow_html=True)
-    annee = st.selectbox("Année", ["2025", "2026"], index=1, label_visibility="collapsed")
+    annee = st.selectbox("Année", ["2024", "2025", "2026"], index=1, label_visibility="collapsed")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_d:
@@ -146,16 +141,17 @@ with tab_saisie:
             if len(toutes_valeurs) >= 4:
                 derniere_ligne = toutes_valeurs[-1]
                 num_ligne_active = len(toutes_valeurs)
-                if len(derniere_ligne) > 1 and derniere_ligne[1] != "" and (len(derniere_ligne) <= 3 or (len(derniere_ligne) > 3 and (derniere_ligne[3] == "" or derniere_ligne[3] is None))):
+                # Détection si la charge n'est pas finie (colonne E ou F vide)
+                if len(derniere_ligne) > 1 and derniere_ligne[1] != "" and (len(derniere_ligne) <= 5 or derniere_ligne[5] == ""):
                     charge_en_cours = True
                     donnees_derniere_ligne = derniere_ligne
-        except Exception as e:
-            st.error(f"Erreur onglet 'Recharge {annee}': {e}")
+        except:
+            st.error(f"Onglet 'Recharge {annee}' introuvable.")
             doc = None
 
     if doc:
         if charge_en_cours:
-            st.info(f"🔋 Charge en cours : {donnees_derniere_ligne[1]} km")
+            st.info(f"🔋 Charge en cours lancée à {donnees_derniere_ligne[1]} km")
 
             date_fin = st.date_input("Date fin", datetime.now(), format="DD/MM/YYYY")
             p_fin_saisi = st.number_input("% Batterie final *", 0, 100, value=None)
@@ -187,12 +183,12 @@ with tab_saisie:
                 st.success(f"Résumé : {t_final} | {e_final} kWh")
 
             with st.form("save_final"):
-                lieu = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla Supercharger", "Autre..."])
+                lieu = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla", "Autre"])
                 prix = st.number_input("Coût €/kWh", value=0.1579, format="%.4f")
                 
-                if st.form_submit_button("✅ CLÔTURER LA RECHARGE"):
-                    if p_fin_saisi is None or 'temps_final' not in st.session_state or 'energie_finale' not in st.session_state:
-                        st.warning("Veuillez valider les calculs (Temps et Énergie).")
+                if st.form_submit_button("✅ TERMINER LA RECHARGE"):
+                    if p_fin_saisi is None or 'temps_final' not in st.session_state:
+                        st.warning("Veuillez valider les calculs.")
                     else:
                         sheet.update_cell(num_ligne_active, 1, date_fin.strftime("%d/%m/%Y"))
                         sheet.update_cell(num_ligne_active, 4, p_fin_saisi / 100)
@@ -225,24 +221,19 @@ with tab_visualisation:
             sheet = doc.worksheet(f"Recharge {annee}")
             valeurs = sheet.get_all_values()
             if len(valeurs) > 3:
-                col_b_brute = [r[1] for r in valeurs[3:] if len(r) > 1]
-                km_total = 0
-                for val in reversed(col_b_brute):
-                    n = extraire_nombre(val)
-                    if n > 0: 
-                        km_total = n
-                        break
+                # Stats simples
+                col_b = [extraire_nombre(r[1]) for r in valeurs[3:] if len(r) > 1]
+                km_max = max(col_b) if col_b else 0
                 
-                col_i_clean = [extraire_nombre(r[8]) for r in valeurs[3:] if len(r) > 8]
-                conso_valides = [v for v in col_i_clean if v > 0]
-                avg_conso = sum(conso_valides) / len(conso_valides) if conso_valides else 0.0
-
-                m1, m2 = st.columns(2)
-                m1.metric("Compteur", f"{km_total:,.0f} km".replace(',', ' '))
-                m2.metric("Moyenne", f"{avg_conso:.1f} kWh/100")
+                col_i = [extraire_nombre(r[8]) for r in valeurs[3:] if len(r) > 8]
+                conso_moy = sum(col_i)/len(col_i) if col_i else 0
+                
+                c1, c2 = st.columns(2)
+                c1.metric("Kilométrage", f"{km_max:,.0f} km".replace(',', ' '))
+                c2.metric("Conso Moyenne", f"{conso_moy:.1f} kWh/100")
 
                 st.divider()
                 df = pd.DataFrame(valeurs[3:], columns=valeurs[2])
                 st.dataframe(df[::-1], use_container_width=True)
         except:
-            st.warning("Données Sheets introuvables.")
+            st.warning("Erreur lors de la lecture des données.")
