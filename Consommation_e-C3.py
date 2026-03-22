@@ -114,7 +114,13 @@ with col_txt:
 
 with col_a:
     st.markdown("<div style='margin-top: 15px;'>", unsafe_allow_html=True)
-    annee = st.selectbox("Année", ["2025", "2026"], index=0, label_visibility="collapsed")
+    
+    # Sélection automatique de l'année par défaut
+    options_annee = ["2025", "2026"]
+    annee_actuelle = str(datetime.now().year)
+    index_defaut = options_annee.index(annee_actuelle) if annee_actuelle in options_annee else 0
+    
+    annee = st.selectbox("Année", options_annee, index=index_defaut, label_visibility="collapsed")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_d:
@@ -232,24 +238,37 @@ with tab_visualisation:
             sheet = doc.worksheet(f"Recharge {annee}")
             valeurs = sheet.get_all_values()
             if len(valeurs) > 3:
-                col_b_brute = [r[1] for r in valeurs[3:] if len(r) > 1]
-                km_total = 0
-                for val in reversed(col_b_brute):
-                    n = extraire_nombre(val)
-                    if n > 0: 
-                        km_total = n
-                        break
+                # --- CALCULS STATS ---
+                # On récupère tous les kilométrages valides
+                col_km = [extraire_nombre(r[1]) for r in valeurs[3:] if len(r) > 1 and extraire_nombre(r[1]) > 0]
                 
-                col_i_clean = [extraire_nombre(r[8]) for r in valeurs[3:] if len(r) > 8]
-                conso_valides = [v for v in col_i_clean if v > 0]
-                avg_conso = sum(conso_valides) / len(conso_valides) if conso_valides else 0.0
+                km_actuel = col_km[-1] if col_km else 0
+                km_depart = col_km[0] if col_km else 0
+                somme_km = km_actuel - km_depart if len(col_km) > 1 else 0
+                
+                # On récupère les consommations (colonne I / Index 8)
+                col_conso = [extraire_nombre(r[8]) for r in valeurs[3:] if len(r) > 8 and extraire_nombre(r[8]) > 0]
+                avg_conso = sum(col_conso) / len(col_conso) if col_conso else 0.0
+                
+                # On récupère les prix (colonne J / Index 9)
+                col_prix = [extraire_nombre(r[9]) for r in valeurs[3:] if len(r) > 9 and extraire_nombre(r[9]) > 0]
+                avg_prix = sum(col_prix) / len(col_prix) if col_prix else 0.1579
+                
+                # Coût pour 100km
+                cout_100 = (avg_conso * avg_prix)
 
-                m1, m2 = st.columns(2)
-                m1.metric("Compteur", f"{km_total:,.0f} km".replace(',', ' '))
-                m2.metric("Moyenne", f"{avg_conso:.1f} kWh/100")
+                # --- AFFICHAGE SCORE CARDS ---
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Somme Km", f"{somme_km:,.0f} km".replace(',', ' '))
+                m2.metric("Moy. Conso", f"{avg_conso:.1f} kWh/100")
+                m3.metric("Coût/100km", f"{cout_100:.2f} €")
 
                 st.divider()
+                
+                # Historique inversé (plus récent en haut)
                 df = pd.DataFrame(valeurs[3:], columns=valeurs[2])
                 st.dataframe(df[::-1], use_container_width=True)
+                
+                st.caption(f"Compteur actuel : {km_actuel:,.0f} km".replace(',', ' '))
         except Exception as e:
             st.warning(f"Données Sheets introuvables ou erreur : {e}")
