@@ -45,7 +45,9 @@ if not check_password():
 
 # --- FONCTIONS DE CALCUL ---
 def extraire_nombre(valeur):
+    """Nettoie la chaîne de caractères pour ne garder que le nombre pur."""
     if not valeur: return 0.0
+    # On retire les espaces (séparateurs de milliers visuels) et on gère les virgules
     nettoye = "".join(c for c in str(valeur) if c.isdigit() or c in ".,-")
     nettoye = nettoye.replace(',', '.')
     try: return float(nettoye)
@@ -128,13 +130,13 @@ with tab_saisie:
             charge_en_cloture = False
             if len(valeurs) >= 4:
                 derniere = valeurs[-1]
-                # Si la colonne 1 (Km) est remplie mais colonne 5 (Temps) est vide, c'est une ligne de départ
-                if len(derniere) >= 2 and derniere[1] != "" and (len(derniere) <= 4 or derniere[4] == ""):
+                if len(derniere) >= 2 and derniere[1] != "" and (len(derniere) <= 4 or (len(derniere) > 4 and derniere[4] == "")):
                     charge_en_cloture = True
                     ligne_depart_data = derniere
 
             if charge_en_cloture:
-                st.info(f"🔋 Départ enregistré : {ligne_depart_data[1]} km ({ligne_depart_data[3]})")
+                km_depart_propre = int(extraire_nombre(ligne_depart_data[1]))
+                st.info(f"🔋 Départ enregistré : {km_depart_propre:,} km ({ligne_depart_data[3]})".replace(',', ' '))
                 st.subheader("🏁 Fin de la recharge (Nouvelle ligne)")
                 
                 date_f = st.date_input("Date de fin", datetime.now(), format="DD/MM/YYYY")
@@ -145,10 +147,10 @@ with tab_saisie:
                 c1, c2 = st.columns(2)
                 with c1:
                     st.write("**Temps (H:MM)**")
-                    t1 = st.text_input("Session 1 *", "0:00")
-                    t2 = st.text_input("Session 2", "")
-                    t3 = st.text_input("Session 3", "")
-                    t4 = st.text_input("Session 4", "")
+                    t1 = st.text_input("Session 1 *", value="")
+                    t2 = st.text_input("Session 2", value="")
+                    t3 = st.text_input("Session 3", value="")
+                    t4 = st.text_input("Session 4", value="")
                     if st.button("⏱️ Valider Temps"):
                         total_min = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
                         st.session_state['temps_final_c3'] = minutes_vers_temps(total_min)
@@ -156,9 +158,9 @@ with tab_saisie:
                 with c2:
                     st.write("**Énergie (kWh)**")
                     e1 = st.number_input("Énergie 1 *", 0.0, step=0.1, value=None)
-                    e2 = st.number_input("Énergie 2", 0.0, step=0.1)
-                    e3 = st.number_input("Énergie 3", 0.0, step=0.1)
-                    e4 = st.number_input("Énergie 4", 0.0, step=0.1)
+                    e2 = st.number_input("Énergie 2", 0.0, step=0.1, value=None)
+                    e3 = st.number_input("Énergie 3", 0.0, step=0.1, value=None)
+                    e4 = st.number_input("Énergie 4", 0.0, step=0.1, value=None)
                     if st.button("🔌 Valider Énergie"):
                         total_e = sum([en if en is not None else 0.0 for en in [e1, e2, e3, e4]])
                         st.session_state['energie_finale_c3'] = round(total_e, 2)
@@ -178,51 +180,64 @@ with tab_saisie:
                         if p_fin is None or 'temps_final_c3' not in st.session_state or 'energie_finale_c3' not in st.session_state:
                             st.error("⚠️ Veuillez remplir le % final et valider les calculs (Temps et Énergie).")
                         else:
-                            # IMPORTANT : On utilise append_row pour créer une NOUVELLE ligne
-                            # On reprend le kilométrage de la ligne de départ (index 1)
+                            # Ici on récupère le KM de départ déjà présent dans la ligne pour la ligne de fin
+                            km_final_pur = int(extraire_nombre(ligne_depart_data[1]))
+                            
                             new_row_fin = [
                                 date_f.strftime("%d/%m/%Y"), 
-                                ligne_depart_data[1],               # On garde le même kilométrage
-                                "",                                 # Col C vide
-                                f"{p_fin}%",                        # Col D % fin
-                                res_t,                              # Col E Temps
-                                str(res_e).replace('.', ','),       # Col F Energie
-                                "", "", "",                         # Col G, H, I calculées par Sheets
-                                str(prix_kwh).replace('.', ','),    # Col J Prix/kWh
-                                "",                                 # Col K
-                                lieu                                # Col L Lieu
+                                km_final_pur,                       
+                                "",                                 
+                                f"{p_fin}%",                        
+                                res_t,                              
+                                str(res_e).replace('.', ','),       
+                                "", "", "",                         
+                                str(prix_kwh).replace('.', ','),    
+                                "",                                 
+                                lieu                                
                             ]
                             sheet.append_row(new_row_fin, value_input_option="USER_ENTERED")
-                            
                             for k in ['temps_final_c3', 'energie_finale_c3']:
                                 if k in st.session_state: del st.session_state[k]
-                            
                             st.success("Nouvelle ligne de fin ajoutée !")
                             st.rerun()
             else:
                 st.subheader("🚀 Nouvelle charge (Ligne de départ)")
                 with st.form("form_depart"):
                     last_km_val = extraire_nombre(valeurs[-1][1]) if len(valeurs) > 3 else 0
-                    km_default = int((last_km_val // 100) * 100)
+                    km_default_str = f"{int((last_km_val // 100) * 100):,}".replace(',', ' ')
+                    
+                    last_km_str = f"{int(last_km_val):,}".replace(',', ' ')
                     
                     date_d = st.date_input("Date", datetime.now(), format="DD/MM/YYYY")
-                    km_v = st.number_input(f"Kilométrage actuel (Précédent : {int(last_km_val)}) *", value=km_default)
+                    
+                    # Saisie visuelle avec espace
+                    km_input_str = st.text_input(
+                        f"Kilométrage actuel (Précédent : {last_km_str}) *", 
+                        value=km_default_str
+                    )
+                    
                     p_dep = st.number_input("% Batterie départ *", 0, 100, value=None)
                     
                     if st.form_submit_button("📝 ENREGISTRER LA LIGNE DE DÉPART"):
+                        # NETTOYAGE CRITIQUE : on transforme "23 300" en 23300 (int) avant l'envoi
+                        km_v_brut = extraire_nombre(km_input_str)
+                        km_v_final = int(km_v_brut)
+                        
                         if p_dep is None:
                             st.error("⚠️ Veuillez saisir le % de batterie.")
-                        elif km_v < last_km_val:
-                            st.error(f"⚠️ Le kilométrage ne peut pas être inférieur au précédent ({int(last_km_val)} km).")
+                        elif km_v_final < last_km_val:
+                            st.error(f"⚠️ Le kilométrage ne peut pas être inférieur au précédent ({last_km_str} km).")
                         else:
+                            # On envoie km_v_final qui est un ENTIER pur sans espace
                             row_dep = [
                                 date_d.strftime("%d/%m/%Y"), 
-                                km_v, 
+                                km_v_final,       
                                 "",              
                                 f"{p_dep}%", 
-                                "",              # Temps vide -> Signal charge en cours
-                                ""               # Energie vide
+                                "",              
+                                ""               
                             ]
+                            # value_input_option="USER_ENTERED" permet à Google Sheet de reconnaître le nombre
                             sheet.append_row(row_dep, value_input_option="USER_ENTERED")
                             st.success("Ligne de départ ajoutée !")
                             st.rerun()
