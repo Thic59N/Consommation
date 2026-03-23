@@ -1,4 +1,5 @@
 import subprocess, sys, os
+import json
 
 # --- AUTO-INSTALLATION ---
 def install_requirements():
@@ -34,7 +35,6 @@ def check_password():
     st.title("🔐 Accès Citroën ë-C3")
     password = st.text_input("Veuillez saisir le mot de passe :", type="password")
     
-    # Récupération sécurisée via les secrets Streamlit
     target_password = st.secrets.get("auth", {}).get("password", "admin") 
 
     if st.button("Connexion"):
@@ -71,13 +71,15 @@ def minutes_vers_temps(total_min):
 # --- CONNEXION ---
 def connecter_sheet():
     scope = ["https://www.googleapis.com/auth/spreadsheets"]
-    
-    # ID corrigé (celui qui fonctionnait précédemment pour la ë-C3)
     sheet_id = "1O2bv779GffFziT9TKcfLgRtYLahKsJ7liNncQM7j-gg"
     
     try:
-        if "gcp_service_account" in st.secrets:
-            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+        service_account_info = st.secrets.get("gcp_service_account")
+        if service_account_info is not None:
+            info = dict(service_account_info)
+            if "private_key" in info:
+                info["private_key"] = info["private_key"].replace("\\n", "\n")
+            creds = Credentials.from_service_account_info(info, scopes=scope)
         else:
             path_json = os.path.join(os.path.dirname(__file__), "credentials.json")
             if os.path.exists(path_json):
@@ -88,9 +90,6 @@ def connecter_sheet():
         
         client = gspread.authorize(creds)
         return client.open_by_key(sheet_id)
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error(f"🚫 Erreur 404 : Fichier Google Sheet introuvable. Vérifiez l'ID et que le fichier est PARTAGÉ avec l'email du compte de service.")
-        return None
     except Exception as e:
         st.error(f"Erreur connexion : {e}")
         return None
@@ -114,12 +113,9 @@ with col_txt:
 
 with col_a:
     st.markdown("<div style='margin-top: 15px;'>", unsafe_allow_html=True)
-    
-    # Sélection automatique de l'année par défaut
     options_annee = ["2025", "2026"]
     annee_actuelle = str(datetime.now().year)
     index_defaut = options_annee.index(annee_actuelle) if annee_actuelle in options_annee else 0
-    
     annee = st.selectbox("Année", options_annee, index=index_defaut, label_visibility="collapsed")
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -147,8 +143,8 @@ with tab_saisie:
             if len(toutes_valeurs) >= 4:
                 derniere_ligne = toutes_valeurs[-1]
                 num_ligne_active = len(toutes_valeurs)
-                # Détection charge en cours : km présents mais pas de % fin (colonne 4) ou de kWh (colonne 6)
-                if len(derniere_ligne) > 1 and derniere_ligne[1] != "" and (len(derniere_ligne) <= 5 or derniere_ligne[5] == ""):
+                # Logique de détection inspirée de l'EV6 : Km présent mais kWh (col 6) vide
+                if len(derniere_ligne) > 1 and derniere_ligne[1] != "" and (len(derniere_ligne) <= 5 or derniere_ligne[5] == "" or derniere_ligne[5] is None):
                     charge_en_cours = True
                     donnees_derniere_ligne = derniere_ligne
         except Exception as e:
@@ -210,17 +206,12 @@ with tab_saisie:
         else:
             with st.form("form_debut"):
                 st.subheader("🚀 Nouvelle recharge")
-                
-                # Calcul du kilométrage suggéré (centaine inférieure)
                 km_precedent = extraire_nombre(toutes_valeurs[-1][1]) if len(toutes_valeurs) > 3 else 0
                 km_suggere = (int(km_precedent) // 100) * 100
                 
                 date_j = st.date_input("Date", datetime.now(), format="DD/MM/YYYY")
-                
-                # Affichage avec espace pour les milliers
                 km_label = f"Kilométrage actuel (Dernier : {int(km_precedent):,})".replace(',', ' ')
                 km_actuel = st.number_input(km_label, value=km_suggere, step=1)
-                
                 p_dep = st.number_input("% Batterie départ *", 0, 100, value=None)
                 
                 if st.form_submit_button("DÉMARRER"):
@@ -238,37 +229,31 @@ with tab_visualisation:
             sheet = doc.worksheet(f"Recharge {annee}")
             valeurs = sheet.get_all_values()
             if len(valeurs) > 3:
-                # --- CALCULS STATS ---
-                # On récupère tous les kilométrages valides
+                # --- CALCULS STATS (Inspiré EV6 avec tes indicateurs personnalisés) ---
                 col_km = [extraire_nombre(r[1]) for r in valeurs[3:] if len(r) > 1 and extraire_nombre(r[1]) > 0]
                 
                 km_actuel = col_km[-1] if col_km else 0
                 km_depart = col_km[0] if col_km else 0
                 somme_km = km_actuel - km_depart if len(col_km) > 1 else 0
                 
-                # On récupère les consommations (colonne I / Index 8)
                 col_conso = [extraire_nombre(r[8]) for r in valeurs[3:] if len(r) > 8 and extraire_nombre(r[8]) > 0]
                 avg_conso = sum(col_conso) / len(col_conso) if col_conso else 0.0
                 
-                # On récupère les prix (colonne J / Index 9)
                 col_prix = [extraire_nombre(r[9]) for r in valeurs[3:] if len(r) > 9 and extraire_nombre(r[9]) > 0]
                 avg_prix = sum(col_prix) / len(col_prix) if col_prix else 0.1579
                 
-                # Coût pour 100km
                 cout_100 = (avg_conso * avg_prix)
 
-                # --- AFFICHAGE SCORE CARDS ---
+                # --- SCORE CARDS ---
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Somme Km", f"{somme_km:,.0f} km".replace(',', ' '))
                 m2.metric("Moy. Conso", f"{avg_conso:.1f} kWh/100")
                 m3.metric("Coût/100km", f"{cout_100:.2f} €")
 
                 st.divider()
-                
-                # Historique inversé (plus récent en haut)
                 df = pd.DataFrame(valeurs[3:], columns=valeurs[2])
                 st.dataframe(df[::-1], use_container_width=True)
                 
                 st.caption(f"Compteur actuel : {km_actuel:,.0f} km".replace(',', ' '))
         except Exception as e:
-            st.warning(f"Données Sheets introuvables ou erreur : {e}")
+            st.warning(f"Erreur lors de la lecture des données : {e}")
