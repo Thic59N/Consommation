@@ -46,6 +46,7 @@ if not check_password():
 # --- FONCTIONS DE CALCUL ---
 def extraire_nombre(valeur):
     if not valeur: return 0.0
+    # On retire les espaces pour le calcul
     nettoye = "".join(c for c in str(valeur) if c.isdigit() or c in ".,-")
     nettoye = nettoye.replace(',', '.')
     try: return float(nettoye)
@@ -162,7 +163,6 @@ with tab_saisie:
                         total_e = sum([en if en is not None else 0.0 for en in [e1, e2, e3, e4]])
                         st.session_state['energie_finale_c3'] = round(total_e, 2)
 
-                # --- RÉSUMÉ DYNAMIQUE ---
                 res_t = st.session_state.get('temps_final_c3', "0:00")
                 res_e = st.session_state.get('energie_finale_c3', 0.0)
                 p_label = f"{p_fin}%" if p_fin is not None else "None%"
@@ -178,7 +178,6 @@ with tab_saisie:
                     with st.expander("📍 Lieu et Prix (Optionnel)", expanded=False):
                         lieu_select = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla", "Autre"])
                         lieu_precis = st.text_input("Si Autre, précisez", placeholder="Optionnel")
-                        
                         final_lieu = lieu_precis if lieu_precis and lieu_select == "Autre" else lieu_select
                         prix_kwh = st.number_input("Coût €/kWh", value=0.1579, format="%.4f")
                     
@@ -187,14 +186,12 @@ with tab_saisie:
                             st.error("⚠️ Veuillez remplir le % final et valider les calculs.")
                         else:
                             num_ligne = len(valeurs)
-                            
                             sheet.update_cell(num_ligne, 1, date_f.strftime("%d/%m/%Y"))
                             sheet.update_cell(num_ligne, 4, f"{p_fin}%")
                             sheet.update_cell(num_ligne, 5, res_t)
                             sheet.update_cell(num_ligne, 6, str(res_e).replace('.', ','))
                             sheet.update_cell(num_ligne, 10, str(prix_kwh).replace('.', ','))
                             sheet.update_cell(num_ligne, 12, final_lieu)
-
                             for k in ['temps_final_c3', 'energie_finale_c3']:
                                 if k in st.session_state: del st.session_state[k]
                             st.success("Données enregistrées dans Google Sheets !")
@@ -202,15 +199,23 @@ with tab_saisie:
             else:
                 st.subheader("🚀 Nouvelle charge")
                 with st.form("form_depart"):
-                    last_km_val = extraire_nombre(valeurs[-1][1]) if len(valeurs) > 3 else 0
-                    km_default_str = f"{int(last_km_val)}"
-                    last_km_str = f"{int(last_km_val):,}".replace(',', ' ')
+                    # Extraction et calcul du km précédent
+                    last_km_val = int(extraire_nombre(valeurs[-1][1])) if len(valeurs) > 3 else 0
+                    
+                    # Arrondi à la centaine inférieure ET formatage avec espace
+                    km_default_val = (last_km_val // 100) * 100
+                    km_default_str = f"{km_default_val:,}".replace(',', ' ')
+                    
+                    # Libellé formaté
+                    last_km_formatted = f"{last_km_val:,}".replace(',', ' ')
                     
                     date_d = st.date_input("Date", datetime.now(), format="DD/MM/YYYY")
-                    km_input_str = st.text_input(f"Kilométrage actuel (Précédent : {last_km_str}) *", value=km_default_str, placeholder="Entrez le kilométrage")
+                    # On utilise text_input pour permettre l'affichage de l'espace
+                    km_input_str = st.text_input(f"Kilométrage actuel (Précédent : {last_km_formatted}) *", value=km_default_str, placeholder="Entrez le kilométrage")
                     p_dep = st.number_input("% Batterie départ *", 0, 100, value=None, placeholder="Ex: 15")
                     
                     if st.form_submit_button("📝 ENREGISTRER LA LIGNE DE DÉPART"):
+                        # La fonction extraire_nombre gère la suppression des espaces pour la conversion
                         km_v_final = int(extraire_nombre(km_input_str))
                         if p_dep is None:
                             st.error("⚠️ Veuillez saisir le % de batterie.")
