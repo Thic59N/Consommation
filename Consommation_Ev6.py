@@ -94,11 +94,22 @@ def connecter_sheet():
 col_img, col_txt, col_a, col_d = st.columns([1, 2.5, 2, 0.8])
 with col_img:
     try:
-        img_path = os.path.join(os.path.dirname(__file__), "Kia EV6.png")
-        image = Image.open(img_path) if os.path.exists(img_path) else None
-        if image: st.image(image, use_container_width=True)
-        else: st.write("🏎️")
-    except: st.write("🏎️")
+        # Ajout de la variante exacte "Kia Ev6.png" signalée par l'utilisateur
+        possibilites = ["Kia Ev6.png", "Kia EV6.png", "Kia_EV6.png", "kia_ev6.png", "kia-ev6.png"]
+        image_a_afficher = None
+        
+        for p in possibilites:
+            path = os.path.join(os.path.dirname(__file__), p)
+            if os.path.exists(path):
+                image_a_afficher = Image.open(path)
+                break
+        
+        if image_a_afficher:
+            st.image(image_a_afficher, use_container_width=True)
+        else:
+            st.write("🏎️") 
+    except:
+        st.write("🏎️")
 
 with col_txt:
     st.markdown("<h3 style='margin-top: 10px;'>Kia EV6</h3>", unsafe_allow_html=True)
@@ -232,15 +243,12 @@ with tab_visualisation:
                 km_total = col_km[-1] if col_km else 0
                 somme_km = (col_km[-1] - col_km[0]) if len(col_km) > 1 else 0
                 
-                # Récupération de la consommation (Colonne I / index 8)
                 col_conso = [extraire_nombre(r[8]) for r in rows if len(r) > 8 and extraire_nombre(r[8]) > 0]
                 moy_conso = sum(col_conso) / len(col_conso) if col_conso else 0.0
                 
-                # Récupération du prix au kWh (Colonne J / index 9)
                 col_prix = [extraire_nombre(r[9]) for r in rows if len(r) > 9 and extraire_nombre(r[9]) > 0]
                 moy_prix_kwh = sum(col_prix) / len(col_prix) if col_prix else 0.1579
                 
-                # Calcul corrigé du coût aux 100km : (Consommation kWh/100km * Prix €/kWh)
                 cout_100 = (moy_conso * moy_prix_kwh)
 
                 c1, c2, c3, c4 = st.columns(4)
