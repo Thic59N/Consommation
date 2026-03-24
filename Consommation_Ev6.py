@@ -211,10 +211,17 @@ with tab_saisie:
                 st.subheader("🚀 Nouvelle charge")
                 with st.form("form_depart_ev6"):
                     last_km_val = int(extraire_nombre(valeurs[-1][1])) if len(valeurs) > 3 else 0
+                    
+                    # --- MODIFICATION POUR ESPACE DES MILLIERS ---
+                    km_default_val = (last_km_val // 100) * 100
+                    km_default_str = f"{km_default_val:,}".replace(',', ' ')
                     last_km_formatted = f"{last_km_val:,}".replace(',', ' ')
                     
                     date_d = st.date_input("Date", datetime.now(), format="DD/MM/YYYY")
-                    km_input_str = st.text_input(f"Kilométrage actuel (Précédent : {last_km_formatted}) *", value=str(last_km_val))
+                    # On utilise text_input pour permettre l'affichage de l'espace
+                    km_input_str = st.text_input(f"Kilométrage actuel (Précédent : {last_km_formatted}) *", value=km_default_str, placeholder="Entrez le kilométrage")
+                    # ---------------------------------------------
+
                     p_dep = st.number_input("% Batterie départ *", 0, 100, value=None, placeholder="Ex: 15")
                     
                     if st.form_submit_button("📝 ENREGISTRER LA LIGNE DE DÉPART"):
