@@ -45,7 +45,6 @@ if not check_password():
 
 # --- FONCTIONS DE NETTOYAGE ---
 def extraire_nombre(valeur):
-    """Nettoie la chaîne (ex: '21%') pour retourner un float (21.0)."""
     if valeur is None or valeur == "": return 0.0
     valeur_str = str(valeur).strip()
     nettoye = "".join(c for c in valeur_str if c.isdigit() or c in ".,")
@@ -84,8 +83,7 @@ def connecter_sheet():
             path_json = os.path.join(os.path.dirname(__file__), "credentials.json")
             if os.path.exists(path_json):
                 creds = Credentials.from_service_account_file(path_json, scopes=scope)
-            else:
-                return None
+            else: return None
         client = gspread.authorize(creds)
         return client.open_by_key(sheet_id)
     except Exception as e:
@@ -131,33 +129,25 @@ with tab_saisie:
             ligne_data = None
             idx_ligne = -1
             
-            # 1. On cherche la ligne "en cours" (KM présent, Temps absent)
             for i in range(len(valeurs) - 1, 2, -1):
                 l = valeurs[i]
-                if len(l) >= 2 and l[1].strip() != "": # Si KM présent
-                    if len(l) <= 4 or not l[4].strip(): # Si Temps absent
+                if len(l) >= 2 and l[1].strip() != "":
+                    if len(l) <= 4 or not l[4].strip():
                         charge_en_cours = True
                         ligne_data = l
-                        idx_ligne = i # Index 0-based pour la liste valeurs
+                        idx_ligne = i
                         break
-                    else:
-                        break 
+                    else: break 
 
             if charge_en_cours:
-                # 2. RÉCUPÉRATION DU KM DE DÉPART (sur la ligne en cours)
                 km_depart_val = extraire_nombre(ligne_data[1])
-                
-                # 3. RÉCUPÉRATION DU % DE DÉPART (SUR LA LIGNE PRÉCÉDENTE)
-                # On prend la ligne juste au dessus (idx_ligne - 1)
                 p_depart_val = 0.0
-                if idx_ligne > 3: # On vérifie qu'on n'est pas sur les entêtes
+                if idx_ligne > 3:
                     ligne_precedente = valeurs[idx_ligne - 1]
-                    # La batterie est en colonne D (index 3)
                     if len(ligne_precedente) > 3:
                         p_depart_val = extraire_nombre(ligne_precedente[3])
                 
                 st.subheader("🏁 Fin de la recharge")
-                
                 p_cible = st.number_input("% souhaité", 0, 100, value=85)
                 diff = max(0, p_cible - p_depart_val)
                 
@@ -199,30 +189,34 @@ with tab_saisie:
                     unsafe_allow_html=True
                 )
 
-                with st.form("cloture_form"):
-                    lieu = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla", "Autre"])
-                    prix = st.number_input("Coût €/kWh", value=0.1579, format="%.4f")
+                # --- PARTIE RÉTABLIE : LIEU ET COÛT EN MENU DÉROULANT ---
+                with st.expander("📍 Lieu et Tarification", expanded=False):
+                    lieu_base = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla", "Autre"])
+                    lieu_final = lieu_base
+                    if lieu_base == "Autre":
+                        lieu_autre = st.text_input("Précisez le lieu")
+                        if lieu_autre: lieu_final = lieu_autre
                     
-                    if st.form_submit_button("✅ ENREGISTRER LA FIN"):
-                        if p_fin is None or 'c3_t_res' not in st.session_state:
-                            st.error("⚠️ Manque % final ou calculs.")
-                        else:
-                            # Mise à jour de la ligne (idx_ligne + 1 car gspread commence à 1)
-                            ligne_reelle = idx_ligne + 1
-                            sheet.update_cell(ligne_reelle, 1, date_f.strftime("%d/%m/%Y"))
-                            sheet.update_cell(ligne_reelle, 4, f"{p_fin}%")
-                            sheet.update_cell(ligne_reelle, 5, st.session_state['c3_t_res'])
-                            sheet.update_cell(ligne_reelle, 6, str(st.session_state['c3_e_res']).replace('.', ','))
-                            sheet.update_cell(ligne_reelle, 10, str(prix).replace('.', ','))
-                            sheet.update_cell(ligne_reelle, 12, lieu)
-                            
-                            for k in ['c3_t_res', 'c3_e_res']:
-                                if k in st.session_state: del st.session_state[k]
-                            st.success("Recharge clôturée !")
-                            st.rerun()
+                    prix = st.number_input("Coût €/kWh", value=0.1579, format="%.4f")
+
+                if st.button("✅ ENREGISTRER LA FIN"):
+                    if p_fin is None or 'c3_t_res' not in st.session_state:
+                        st.error("⚠️ Manque % final ou calculs.")
+                    else:
+                        ligne_reelle = idx_ligne + 1
+                        sheet.update_cell(ligne_reelle, 1, date_f.strftime("%d/%m/%Y"))
+                        sheet.update_cell(ligne_reelle, 4, f"{p_fin}%")
+                        sheet.update_cell(ligne_reelle, 5, st.session_state['c3_t_res'])
+                        sheet.update_cell(ligne_reelle, 6, str(st.session_state['c3_e_res']).replace('.', ','))
+                        sheet.update_cell(ligne_reelle, 10, str(prix).replace('.', ','))
+                        sheet.update_cell(ligne_reelle, 12, lieu_final)
+                        
+                        for k in ['c3_t_res', 'c3_e_res']:
+                            if k in st.session_state: del st.session_state[k]
+                        st.success("Recharge clôturée !")
+                        st.rerun()
             else:
                 st.subheader("🚀 Nouvelle charge")
-                # Aide KM
                 last_km = 0
                 for r in valeurs[3:]:
                     if len(r) > 1 and extraire_nombre(r[1]) > 0:
@@ -245,8 +239,6 @@ with tab_saisie:
                         st.error("⚠️ Saisir le % actuel.")
                     else:
                         km_v = int(extraire_nombre(km_in))
-                        # IMPORTANT: On enregistre le % de départ dans la colonne D (index 4)
-                        # pour qu'il soit disponible lors de la clôture
                         sheet.append_row([date_d.strftime("%d/%m/%Y"), km_v, "", f"{p_dep_saisie}%", "", ""], value_input_option="USER_ENTERED")
                         st.success("Départ enregistré !")
                         st.rerun()
