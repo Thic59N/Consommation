@@ -45,12 +45,14 @@ if not check_password():
 
 # --- FONCTIONS DE CALCUL ---
 def extraire_nombre(valeur):
-    if not valeur: return 0.0
-    # On retire les espaces pour le calcul
+    """Nettoie la chaîne pour ne garder que les chiffres et les séparateurs décimaux."""
+    if valeur is None or valeur == "": return 0.0
     nettoye = "".join(c for c in str(valeur) if c.isdigit() or c in ".,-")
     nettoye = nettoye.replace(',', '.')
-    try: return float(nettoye)
-    except: return 0.0
+    try: 
+        return float(nettoye)
+    except: 
+        return 0.0
 
 def temps_vers_minutes(t):
     if not t or ":" not in t: return 0
@@ -126,16 +128,41 @@ with tab_saisie:
             valeurs = sheet.get_all_values()
             
             charge_en_cloture = False
-            if len(valeurs) >= 4:
-                derniere = valeurs[-1]
-                if len(derniere) >= 2 and derniere[1] != "" and (len(derniere) <= 4 or (len(derniere) > 4 and (derniere[4] == "" or derniere[4] is None))):
-                    charge_en_cloture = True
-                    ligne_depart_data = derniere
+            ligne_depart_data = None
+            index_ligne_trouvee = -1
+            
+            # Recherche de la ligne à clôturer (celle qui a un KM mais pas de Temps)
+            for i in range(len(valeurs) - 1, 2, -1):
+                ligne = valeurs[i]
+                if len(ligne) >= 2 and ligne[1].strip() != "":
+                    if len(ligne) <= 4 or not ligne[4].strip():
+                        charge_en_cloture = True
+                        ligne_depart_data = ligne
+                        index_ligne_trouvee = i + 1
+                        break
+                    else:
+                        break
 
             if charge_en_cloture:
                 km_depart_propre = int(extraire_nombre(ligne_depart_data[1]))
-                st.info(f"🔋 Départ enregistré : {km_depart_propre:,} km".replace(',', ' '))
+                
+                # RÉCUPÉRATION DU % RÉEL (Cellule précédente dans la colonne D)
+                # On regarde la ligne d'avant (index_ligne_trouvee - 2 car index 0 et ligne humaine)
+                p_dep_enregistre = 0.0
+                if index_ligne_trouvee > 4: # On s'assure qu'il y a une ligne de données avant
+                    ligne_precedente = valeurs[index_ligne_trouvee - 2]
+                    if len(ligne_precedente) > 3:
+                        p_dep_enregistre = extraire_nombre(ligne_precedente[3])
+                
                 st.subheader("🏁 Fin de la recharge")
+                
+                p_souhaite_fin = st.number_input("% souhaité", 0, 100, value=85, key="p_souhaite_fin")
+                diff_a_ajouter = max(0, p_souhaite_fin - p_dep_enregistre)
+                
+                st.info(
+                    f"🔋 **KM de départ :** {km_depart_propre:,} km".replace(',', ' ') + 
+                    f"\n\n⚡ **% batterie à ajouter : {int(diff_a_ajouter)}%** (Basé sur **{int(p_dep_enregistre)}%** restants)"
+                )
                 
                 date_f = st.date_input("Date de fin", datetime.now(), format="DD/MM/YYYY")
                 p_fin = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Ex: 80")
@@ -145,20 +172,20 @@ with tab_saisie:
                 c1, c2 = st.columns(2)
                 with c1:
                     st.write("**Temps (H:MM)**")
-                    t1 = st.text_input("Sess. 1 *", value="", placeholder="Obligatoire (ex: 2:38)")
-                    t2 = st.text_input("Sess. 2", value="", placeholder="Optionnel")
-                    t3 = st.text_input("Sess. 3", value="", placeholder="Optionnel")
-                    t4 = st.text_input("Sess. 4", value="", placeholder="Optionnel")
+                    t1 = st.text_input("Sess. 1 *", value="", placeholder="ex: 2:38")
+                    t2 = st.text_input("Sess. 2", value="")
+                    t3 = st.text_input("Sess. 3", value="")
+                    t4 = st.text_input("Sess. 4", value="")
                     if st.button("⏱️ Valider Temps"):
                         total_min = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
                         st.session_state['temps_final_c3'] = minutes_vers_temps(total_min)
                 
                 with c2:
                     st.write("**Énergie (kWh)**")
-                    e1 = st.number_input("kWh 1 *", 0.0, step=0.1, value=None, placeholder="Obligatoire")
-                    e2 = st.number_input("kWh 2", 0.0, step=0.1, value=None, placeholder="Optionnel")
-                    e3 = st.number_input("kWh 3", 0.0, step=0.1, value=None, placeholder="Optionnel")
-                    e4 = st.number_input("kWh 4", 0.0, step=0.1, value=None, placeholder="Optionnel")
+                    e1 = st.number_input("kWh 1 *", 0.0, step=0.1, value=None)
+                    e2 = st.number_input("kWh 2", 0.0, step=0.1, value=None)
+                    e3 = st.number_input("kWh 3", 0.0, step=0.1, value=None)
+                    e4 = st.number_input("kWh 4", 0.0, step=0.1, value=None)
                     if st.button("🔌 Valider Énergie"):
                         total_e = sum([en if en is not None else 0.0 for en in [e1, e2, e3, e4]])
                         st.session_state['energie_finale_c3'] = round(total_e, 2)
@@ -185,47 +212,39 @@ with tab_saisie:
                         if p_fin is None or 'temps_final_c3' not in st.session_state or 'energie_finale_c3' not in st.session_state:
                             st.error("⚠️ Veuillez remplir le % final et valider les calculs.")
                         else:
-                            num_ligne = len(valeurs)
-                            sheet.update_cell(num_ligne, 1, date_f.strftime("%d/%m/%Y"))
-                            sheet.update_cell(num_ligne, 4, f"{p_fin}%")
-                            sheet.update_cell(num_ligne, 5, res_t)
-                            sheet.update_cell(num_ligne, 6, str(res_e).replace('.', ','))
-                            sheet.update_cell(num_ligne, 10, str(prix_kwh).replace('.', ','))
-                            sheet.update_cell(num_ligne, 12, final_lieu)
+                            sheet.update_cell(index_ligne_trouvee, 1, date_f.strftime("%d/%m/%Y"))
+                            sheet.update_cell(index_ligne_trouvee, 4, f"{p_fin}%")
+                            sheet.update_cell(index_ligne_trouvee, 5, res_t)
+                            sheet.update_cell(index_ligne_trouvee, 6, str(res_e).replace('.', ','))
+                            sheet.update_cell(index_ligne_trouvee, 10, str(prix_kwh).replace('.', ','))
+                            sheet.update_cell(index_ligne_trouvee, 12, final_lieu)
                             for k in ['temps_final_c3', 'energie_finale_c3']:
                                 if k in st.session_state: del st.session_state[k]
-                            st.success("Données enregistrées dans Google Sheets !")
+                            st.success("Données enregistrées !")
                             st.rerun()
             else:
                 st.subheader("🚀 Nouvelle charge")
+                last_km_val = 0
+                for i in range(len(valeurs)-1, 2, -1):
+                    val_km = extraire_nombre(valeurs[i][1])
+                    if val_km > 0:
+                        last_km_val = int(val_km)
+                        break
+                
                 with st.form("form_depart"):
-                    # Extraction et calcul du km précédent
-                    last_km_val = int(extraire_nombre(valeurs[-1][1])) if len(valeurs) > 3 else 0
-                    
-                    # Arrondi à la centaine inférieure ET formatage avec espace
-                    km_default_val = (last_km_val // 100) * 100
-                    km_default_str = f"{km_default_val:,}".replace(',', ' ')
-                    
-                    # Libellé formaté
-                    last_km_formatted = f"{last_km_val:,}".replace(',', ' ')
-                    
+                    km_default_str = f"{last_km_val:,}".replace(',', ' ')
                     date_d = st.date_input("Date", datetime.now(), format="DD/MM/YYYY")
-                    # On utilise text_input pour permettre l'affichage de l'espace
-                    km_input_str = st.text_input(f"Kilométrage actuel (Précédent : {last_km_formatted}) *", value=km_default_str, placeholder="Entrez le kilométrage")
-                    p_dep = st.number_input("% Batterie départ *", 0, 100, value=None, placeholder="Ex: 15")
+                    km_input_str = st.text_input(f"Kilométrage actuel (Précédent : {last_km_val})", value=km_default_str)
                     
-                    if st.form_submit_button("📝 ENREGISTRER LA LIGNE DE DÉPART"):
-                        # La fonction extraire_nombre gère la suppression des espaces pour la conversion
-                        km_v_final = int(extraire_nombre(km_input_str))
-                        if p_dep is None:
-                            st.error("⚠️ Veuillez saisir le % de batterie.")
-                        elif km_v_final < last_km_val:
-                            st.error(f"⚠️ Kilométrage incohérent.")
-                        else:
-                            row_dep = [date_d.strftime("%d/%m/%Y"), km_v_final, "", f"{p_dep}%", "", ""]
-                            sheet.append_row(row_dep, value_input_option="USER_ENTERED")
-                            st.success("Ligne de départ ajoutée !")
-                            st.rerun()
+                    # Pour le nouveau départ, on n'a plus besoin du champ "% Batterie départ"
+                    # car on sait qu'il sera récupéré de la ligne précédente lors de la clôture
+                    p_souhaite = st.number_input("% souhaité", 0, 100, value=85)
+                    
+                    if st.form_submit_button("📝 ENREGISTRER LE DÉPART"):
+                        km_v = int(extraire_nombre(km_input_str))
+                        sheet.append_row([date_d.strftime("%d/%m/%Y"), km_v, "", "", "", ""], value_input_option="USER_ENTERED")
+                        st.success("Départ enregistré !")
+                        st.rerun()
         except Exception as e:
             st.error(f"Erreur : {e}")
 
@@ -238,7 +257,7 @@ with tab_visualisation:
             valeurs = sheet.get_all_values()
             if len(valeurs) > 3:
                 rows = valeurs[3:]
-                col_km = [extraire_nombre(r[1]) for r in rows if len(r) > 1]
+                col_km = [extraire_nombre(r[1]) for r in rows if len(r) > 1 and extraire_nombre(r[1]) > 0]
                 km_total = col_km[-1] if col_km else 0
                 total_km_an = (col_km[-1] - col_km[0]) if len(col_km) > 1 else 0
                 col_conso = [extraire_nombre(r[8]) for r in rows if len(r) > 8 and extraire_nombre(r[8]) > 0]
