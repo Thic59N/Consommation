@@ -43,11 +43,12 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- FONCTIONS DE CALCUL ---
+# --- FONCTIONS DE NETTOYAGE ---
 def extraire_nombre(valeur):
-    """Nettoie la chaîne pour ne garder que les chiffres et les séparateurs décimaux."""
+    """Nettoie la chaîne (ex: '21%') pour retourner un float (21.0)."""
     if valeur is None or valeur == "": return 0.0
-    nettoye = "".join(c for c in str(valeur) if c.isdigit() or c in ".,-")
+    valeur_str = str(valeur).strip()
+    nettoye = "".join(c for c in valeur_str if c.isdigit() or c in ".,")
     nettoye = nettoye.replace(',', '.')
     try: 
         return float(nettoye)
@@ -68,7 +69,7 @@ def minutes_vers_temps(total_min):
     m = total_min % 60
     return f"{h}:{m:02d}"
 
-# --- CONNEXION ---
+# --- CONNEXION GOOGLE SHEETS ---
 def connecter_sheet():
     scope = ["https://www.googleapis.com/auth/spreadsheets"]
     sheet_id = "1O2bv779GffFziT9TKcfLgRtYLahKsJ7liNncQM7j-gg"
@@ -84,7 +85,6 @@ def connecter_sheet():
             if os.path.exists(path_json):
                 creds = Credentials.from_service_account_file(path_json, scopes=scope)
             else:
-                st.error("⚠️ Identifiants Google Sheets manquants.")
                 return None
         client = gspread.authorize(creds)
         return client.open_by_key(sheet_id)
@@ -127,45 +127,47 @@ with tab_saisie:
             sheet = doc.worksheet(f"Recharge {annee}")
             valeurs = sheet.get_all_values()
             
-            charge_en_cloture = False
-            ligne_depart_data = None
-            index_ligne_trouvee = -1
+            charge_en_cours = False
+            ligne_data = None
+            idx_ligne = -1
             
-            # Recherche de la ligne à clôturer (celle qui a un KM mais pas de Temps)
+            # 1. On cherche la ligne "en cours" (KM présent, Temps absent)
             for i in range(len(valeurs) - 1, 2, -1):
-                ligne = valeurs[i]
-                if len(ligne) >= 2 and ligne[1].strip() != "":
-                    if len(ligne) <= 4 or not ligne[4].strip():
-                        charge_en_cloture = True
-                        ligne_depart_data = ligne
-                        index_ligne_trouvee = i + 1
+                l = valeurs[i]
+                if len(l) >= 2 and l[1].strip() != "": # Si KM présent
+                    if len(l) <= 4 or not l[4].strip(): # Si Temps absent
+                        charge_en_cours = True
+                        ligne_data = l
+                        idx_ligne = i # Index 0-based pour la liste valeurs
                         break
                     else:
-                        break
+                        break 
 
-            if charge_en_cloture:
-                km_depart_propre = int(extraire_nombre(ligne_depart_data[1]))
+            if charge_en_cours:
+                # 2. RÉCUPÉRATION DU KM DE DÉPART (sur la ligne en cours)
+                km_depart_val = extraire_nombre(ligne_data[1])
                 
-                # RÉCUPÉRATION DU % RÉEL (Cellule précédente dans la colonne D)
-                # On regarde la ligne d'avant (index_ligne_trouvee - 2 car index 0 et ligne humaine)
-                p_dep_enregistre = 0.0
-                if index_ligne_trouvee > 4: # On s'assure qu'il y a une ligne de données avant
-                    ligne_precedente = valeurs[index_ligne_trouvee - 2]
+                # 3. RÉCUPÉRATION DU % DE DÉPART (SUR LA LIGNE PRÉCÉDENTE)
+                # On prend la ligne juste au dessus (idx_ligne - 1)
+                p_depart_val = 0.0
+                if idx_ligne > 3: # On vérifie qu'on n'est pas sur les entêtes
+                    ligne_precedente = valeurs[idx_ligne - 1]
+                    # La batterie est en colonne D (index 3)
                     if len(ligne_precedente) > 3:
-                        p_dep_enregistre = extraire_nombre(ligne_precedente[3])
+                        p_depart_val = extraire_nombre(ligne_precedente[3])
                 
                 st.subheader("🏁 Fin de la recharge")
                 
-                p_souhaite_fin = st.number_input("% souhaité", 0, 100, value=85, key="p_souhaite_fin")
-                diff_a_ajouter = max(0, p_souhaite_fin - p_dep_enregistre)
+                p_cible = st.number_input("% souhaité", 0, 100, value=85)
+                diff = max(0, p_cible - p_depart_val)
                 
                 st.info(
-                    f"🔋 **KM de départ :** {km_depart_propre:,} km".replace(',', ' ') + 
-                    f"\n\n⚡ **% batterie à ajouter : {int(diff_a_ajouter)}%** (Basé sur **{int(p_dep_enregistre)}%** restants)"
+                    f"🔋 **KM de départ :** {int(km_depart_val):,} km".replace(',', ' ') + 
+                    f"\n\n⚡ **% batterie à ajouter : {int(diff)}%** (Calcul basé sur **{int(p_depart_val)}%** au départ)"
                 )
                 
                 date_f = st.date_input("Date de fin", datetime.now(), format="DD/MM/YYYY")
-                p_fin = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Ex: 80")
+                p_fin = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Ex: 85")
                 
                 st.markdown("---")
                 st.markdown("#### 🧮 Calculs")
@@ -177,8 +179,8 @@ with tab_saisie:
                     t3 = st.text_input("Sess. 3", value="")
                     t4 = st.text_input("Sess. 4", value="")
                     if st.button("⏱️ Valider Temps"):
-                        total_min = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
-                        st.session_state['temps_final_c3'] = minutes_vers_temps(total_min)
+                        total_m = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
+                        st.session_state['c3_t_res'] = minutes_vers_temps(total_m)
                 
                 with c2:
                     st.write("**Énergie (kWh)**")
@@ -188,90 +190,77 @@ with tab_saisie:
                     e4 = st.number_input("kWh 4", 0.0, step=0.1, value=None)
                     if st.button("🔌 Valider Énergie"):
                         total_e = sum([en if en is not None else 0.0 for en in [e1, e2, e3, e4]])
-                        st.session_state['energie_finale_c3'] = round(total_e, 2)
+                        st.session_state['c3_e_res'] = round(total_e, 2)
 
-                res_t = st.session_state.get('temps_final_c3', "0:00")
-                res_e = st.session_state.get('energie_finale_c3', 0.0)
-                p_label = f"{p_fin}%" if p_fin is not None else "None%"
-                
                 st.markdown(
-                    f"<div style='background-color: #1e2130; padding: 10px; border-radius: 5px; border-left: 5px solid #ff4b4b; margin-bottom: 20px;'>"
-                    f"📊 <b>Résumé :</b> Batterie {p_label} | Temps {res_t} | Énergie {res_e} kWh"
+                    f"<div style='background-color: #1e2130; padding: 10px; border-radius: 5px; border-left: 5px solid #ff4b4b; margin-top: 10px;'>"
+                    f"📊 <b>Résumé :</b> Temps {st.session_state.get('c3_t_res', '0:00')} | Énergie {st.session_state.get('c3_e_res', 0.0)} kWh"
                     f"</div>", 
                     unsafe_allow_html=True
                 )
 
-                with st.form("form_fin_reel"):
-                    with st.expander("📍 Lieu et Prix (Optionnel)", expanded=False):
-                        lieu_select = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla", "Autre"])
-                        lieu_precis = st.text_input("Si Autre, précisez", placeholder="Optionnel")
-                        final_lieu = lieu_precis if lieu_precis and lieu_select == "Autre" else lieu_select
-                        prix_kwh = st.number_input("Coût €/kWh", value=0.1579, format="%.4f")
+                with st.form("cloture_form"):
+                    lieu = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla", "Autre"])
+                    prix = st.number_input("Coût €/kWh", value=0.1579, format="%.4f")
                     
-                    if st.form_submit_button("✅ TOUT ENREGISTRER DANS SHEETS"):
-                        if p_fin is None or 'temps_final_c3' not in st.session_state or 'energie_finale_c3' not in st.session_state:
-                            st.error("⚠️ Veuillez remplir le % final et valider les calculs.")
+                    if st.form_submit_button("✅ ENREGISTRER LA FIN"):
+                        if p_fin is None or 'c3_t_res' not in st.session_state:
+                            st.error("⚠️ Manque % final ou calculs.")
                         else:
-                            sheet.update_cell(index_ligne_trouvee, 1, date_f.strftime("%d/%m/%Y"))
-                            sheet.update_cell(index_ligne_trouvee, 4, f"{p_fin}%")
-                            sheet.update_cell(index_ligne_trouvee, 5, res_t)
-                            sheet.update_cell(index_ligne_trouvee, 6, str(res_e).replace('.', ','))
-                            sheet.update_cell(index_ligne_trouvee, 10, str(prix_kwh).replace('.', ','))
-                            sheet.update_cell(index_ligne_trouvee, 12, final_lieu)
-                            for k in ['temps_final_c3', 'energie_finale_c3']:
+                            # Mise à jour de la ligne (idx_ligne + 1 car gspread commence à 1)
+                            ligne_reelle = idx_ligne + 1
+                            sheet.update_cell(ligne_reelle, 1, date_f.strftime("%d/%m/%Y"))
+                            sheet.update_cell(ligne_reelle, 4, f"{p_fin}%")
+                            sheet.update_cell(ligne_reelle, 5, st.session_state['c3_t_res'])
+                            sheet.update_cell(ligne_reelle, 6, str(st.session_state['c3_e_res']).replace('.', ','))
+                            sheet.update_cell(ligne_reelle, 10, str(prix).replace('.', ','))
+                            sheet.update_cell(ligne_reelle, 12, lieu)
+                            
+                            for k in ['c3_t_res', 'c3_e_res']:
                                 if k in st.session_state: del st.session_state[k]
-                            st.success("Données enregistrées !")
+                            st.success("Recharge clôturée !")
                             st.rerun()
             else:
                 st.subheader("🚀 Nouvelle charge")
-                last_km_val = 0
-                for i in range(len(valeurs)-1, 2, -1):
-                    val_km = extraire_nombre(valeurs[i][1])
-                    if val_km > 0:
-                        last_km_val = int(val_km)
-                        break
+                # Aide KM
+                last_km = 0
+                for r in valeurs[3:]:
+                    if len(r) > 1 and extraire_nombre(r[1]) > 0:
+                        last_km = int(extraire_nombre(r[1]))
                 
-                with st.form("form_depart"):
-                    km_default_str = f"{last_km_val:,}".replace(',', ' ')
-                    date_d = st.date_input("Date", datetime.now(), format="DD/MM/YYYY")
-                    km_input_str = st.text_input(f"Kilométrage actuel (Précédent : {last_km_val})", value=km_default_str)
-                    
-                    # Pour le nouveau départ, on n'a plus besoin du champ "% Batterie départ"
-                    # car on sait qu'il sera récupéré de la ligne précédente lors de la clôture
-                    p_souhaite = st.number_input("% souhaité", 0, 100, value=85)
-                    
-                    if st.form_submit_button("📝 ENREGISTRER LE DÉPART"):
-                        km_v = int(extraire_nombre(km_input_str))
-                        sheet.append_row([date_d.strftime("%d/%m/%Y"), km_v, "", "", "", ""], value_input_option="USER_ENTERED")
+                date_d = st.date_input("Date", datetime.now(), format="DD/MM/YYYY")
+                km_in = st.text_input(f"Kilométrage (Dernier : {last_km})", value=f"{last_km:,}".replace(',', ' '))
+                
+                c1, c2 = st.columns(2)
+                with c1:
+                    p_dep_saisie = st.number_input("% actuel *", 0, 100, value=None)
+                with c2:
+                    p_souhait = st.number_input("% souhaité", 0, 100, value=85)
+
+                if p_dep_saisie is not None:
+                    st.info(f"⚡ **Batterie à ajouter : {int(p_souhait - p_dep_saisie)}%**")
+
+                if st.button("📝 ENREGISTRER LE DÉPART"):
+                    if p_dep_saisie is None:
+                        st.error("⚠️ Saisir le % actuel.")
+                    else:
+                        km_v = int(extraire_nombre(km_in))
+                        # IMPORTANT: On enregistre le % de départ dans la colonne D (index 4)
+                        # pour qu'il soit disponible lors de la clôture
+                        sheet.append_row([date_d.strftime("%d/%m/%Y"), km_v, "", f"{p_dep_saisie}%", "", ""], value_input_option="USER_ENTERED")
                         st.success("Départ enregistré !")
                         st.rerun()
         except Exception as e:
             st.error(f"Erreur : {e}")
 
 with tab_visualisation:
-    st.subheader(f"📊 Dashboard {annee}")
     doc = connecter_sheet()
     if doc:
         try:
             sheet = doc.worksheet(f"Recharge {annee}")
             valeurs = sheet.get_all_values()
             if len(valeurs) > 3:
-                rows = valeurs[3:]
-                col_km = [extraire_nombre(r[1]) for r in rows if len(r) > 1 and extraire_nombre(r[1]) > 0]
-                km_total = col_km[-1] if col_km else 0
-                total_km_an = (col_km[-1] - col_km[0]) if len(col_km) > 1 else 0
-                col_conso = [extraire_nombre(r[8]) for r in rows if len(r) > 8 and extraire_nombre(r[8]) > 0]
-                moy_conso = sum(col_conso) / len(col_conso) if col_conso else 0.0
-                col_cout_100 = [extraire_nombre(r[12]) for r in rows if len(r) > 12 and extraire_nombre(r[12]) > 0]
-                moy_cout_100 = sum(col_cout_100) / len(col_cout_100) if col_cout_100 else 0.0
-
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Km Total", f"{km_total:,.0f} km".replace(',', ' '))
-                c2.metric("Somme Km", f"{total_km_an:,.0f} km".replace(',', ' '))
-                c3.metric("Moy. Conso", f"{moy_conso:.2f} kWh/100km")
-                c4.metric("Coût/100km", f"{moy_cout_100:.2f} €")
-                st.divider()
-                df = pd.DataFrame(rows, columns=valeurs[2])
+                df = pd.DataFrame(valeurs[3:], columns=valeurs[2])
                 st.dataframe(df[::-1], use_container_width=True)
         except:
-            st.info("Données non disponibles.")
+            st.info("Données non trouvées.")
