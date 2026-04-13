@@ -68,7 +68,6 @@ def minutes_vers_temps(total_min):
 # --- CONNEXION ---
 def connecter_sheet():
     scope = ["https://www.googleapis.com/auth/spreadsheets"]
-    # ID Spécifique Kia EV6
     sheet_id = "12lz9BdZspahJwwc4K85pe5eJhYGbK_79dNDErjUX-Og"
     try:
         service_account_info = st.secrets.get("gcp_service_account")
@@ -94,16 +93,13 @@ def connecter_sheet():
 col_img, col_txt, col_a, col_d = st.columns([1, 2.5, 2, 0.8])
 with col_img:
     try:
-        # Ajout de la variante exacte "Kia Ev6.png" signalée par l'utilisateur
         possibilites = ["Kia Ev6.png", "Kia EV6.png", "Kia_EV6.png", "kia_ev6.png", "kia-ev6.png"]
         image_a_afficher = None
-        
         for p in possibilites:
             path = os.path.join(os.path.dirname(__file__), p)
             if os.path.exists(path):
                 image_a_afficher = Image.open(path)
                 break
-        
         if image_a_afficher:
             st.image(image_a_afficher, use_container_width=True)
         else:
@@ -139,6 +135,7 @@ with tab_saisie:
             charge_en_cloture = False
             if len(valeurs) >= 4:
                 derniere = valeurs[-1]
+                # Si la ligne a une date et un kilométrage mais pas de kWh (colonne 6 / index 5)
                 if len(derniere) >= 2 and derniere[1] != "" and (len(derniere) <= 5 or (len(derniere) > 5 and (derniere[5] == "" or derniere[5] is None))):
                     charge_en_cloture = True
                     ligne_depart_data = derniere
@@ -152,27 +149,37 @@ with tab_saisie:
                 p_fin = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Ex: 80")
                 
                 st.markdown("---")
+                
+                # --- NOUVELLE LOGIQUE DYNAMIQUE ---
                 st.markdown("#### 🧮 Calculs")
+                nb_sessions = st.number_input("Nombre de sessions de charge", min_value=1, max_value=20, value=4)
+                
                 c1, c2 = st.columns(2)
+                t_inputs = []
+                e_inputs = []
+                
                 with c1:
                     st.write("**Temps (H:MM)**")
-                    t1 = st.text_input("Sess. 1 *", value="", placeholder="Ex: 2:38")
-                    t2 = st.text_input("Sess. 2", value="", placeholder="Optionnel")
-                    t3 = st.text_input("Sess. 3", value="", placeholder="Optionnel")
-                    t4 = st.text_input("Sess. 4", value="", placeholder="Optionnel")
+                    for i in range(nb_sessions):
+                        label = f"Sess. {i+1} *" if i == 0 else f"Sess. {i+1}"
+                        val_t = st.text_input(label, value="", placeholder="Ex: 2:38", key=f"t_in_{i}")
+                        t_inputs.append(val_t)
+                    
                     if st.button("⏱️ Valider Temps"):
-                        total_min = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
+                        total_min = sum([temps_vers_minutes(t) for t in t_inputs])
                         st.session_state['temps_final_ev6'] = minutes_vers_temps(total_min)
                 
                 with c2:
                     st.write("**Énergie (kWh)**")
-                    e1 = st.number_input("kWh 1 *", 0.0, step=0.1, value=None)
-                    e2 = st.number_input("kWh 2", 0.0, step=0.1, value=None)
-                    e3 = st.number_input("kWh 3", 0.0, step=0.1, value=None)
-                    e4 = st.number_input("kWh 4", 0.0, step=0.1, value=None)
+                    for i in range(nb_sessions):
+                        label = f"kWh {i+1} *" if i == 0 else f"kWh {i+1}"
+                        val_e = st.number_input(label, 0.0, step=0.1, value=None, key=f"e_in_{i}")
+                        e_inputs.append(val_e)
+                        
                     if st.button("🔌 Valider Énergie"):
-                        total_e = sum([en if en is not None else 0.0 for en in [e1, e2, e3, e4]])
+                        total_e = sum([en if en is not None else 0.0 for en in e_inputs])
                         st.session_state['energie_finale_ev6'] = round(total_e, 2)
+                # ----------------------------------
 
                 res_t = st.session_state.get('temps_final_ev6', "0:00")
                 res_e = st.session_state.get('energie_finale_ev6', 0.0)
@@ -211,17 +218,12 @@ with tab_saisie:
                 st.subheader("🚀 Nouvelle charge")
                 with st.form("form_depart_ev6"):
                     last_km_val = int(extraire_nombre(valeurs[-1][1])) if len(valeurs) > 3 else 0
-                    
-                    # --- MODIFICATION POUR ESPACE DES MILLIERS ---
                     km_default_val = (last_km_val // 100) * 100
                     km_default_str = f"{km_default_val:,}".replace(',', ' ')
                     last_km_formatted = f"{last_km_val:,}".replace(',', ' ')
                     
                     date_d = st.date_input("Date", datetime.now(), format="DD/MM/YYYY")
-                    # On utilise text_input pour permettre l'affichage de l'espace
-                    km_input_str = st.text_input(f"Kilométrage actuel (Précédent : {last_km_formatted}) *", value=km_default_str, placeholder="Entrez le kilométrage")
-                    # ---------------------------------------------
-
+                    km_input_str = st.text_input(f"Kilométrage actuel (Précédent : {last_km_formatted}) *", value=km_default_str)
                     p_dep = st.number_input("% Batterie départ *", 0, 100, value=None, placeholder="Ex: 15")
                     
                     if st.form_submit_button("📝 ENREGISTRER LA LIGNE DE DÉPART"):
