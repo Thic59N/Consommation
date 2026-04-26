@@ -140,82 +140,86 @@ with tab_saisie:
                     else: break 
 
             if charge_en_cours:
+                # --- INFOS DE DÉPART ---
                 km_depart_val = extraire_nombre(ligne_data[1])
                 p_depart_val = 0.0
-                if idx_ligne > 3:
+                if idx_ligne > 0:
                     ligne_precedente = valeurs[idx_ligne - 1]
                     if len(ligne_precedente) > 3:
                         p_depart_val = extraire_nombre(ligne_precedente[3])
                 
-                st.subheader("🏁 Fin de la recharge")
-                p_cible = st.number_input("% souhaité", 0, 100, value=85)
-                diff = max(0, p_cible - p_depart_val)
-                
-                st.info(
-                    f"🔋 **KM de départ :** {int(km_depart_val):,} km".replace(',', ' ') + 
-                    f"\n\n⚡ **% batterie à ajouter : {int(diff)}%** (Calcul basé sur **{int(p_depart_val)}%** au départ)"
-                )
-                
-                date_f = st.date_input("Date de fin", datetime.now(), format="DD/MM/YYYY")
-                p_fin = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Ex: 85")
-                
-                st.markdown("---")
-                st.markdown("#### 🧮 Calculs")
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.write("**Temps (H:MM)**")
-                    t1 = st.text_input("Sess. 1 *", value="", placeholder="ex: 2:38")
-                    t2 = st.text_input("Sess. 2", value="")
-                    t3 = st.text_input("Sess. 3", value="")
-                    t4 = st.text_input("Sess. 4", value="")
-                    if st.button("⏱️ Valider Temps"):
-                        total_m = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
-                        st.session_state['c3_t_res'] = minutes_vers_temps(total_m)
-                
-                with c2:
-                    st.write("**Énergie (kWh)**")
-                    e1 = st.number_input("kWh 1 *", 0.0, step=0.1, value=None)
-                    e2 = st.number_input("kWh 2", 0.0, step=0.1, value=None)
-                    e3 = st.number_input("kWh 3", 0.0, step=0.1, value=None)
-                    e4 = st.number_input("kWh 4", 0.0, step=0.1, value=None)
-                    if st.button("🔌 Valider Énergie"):
-                        total_e = sum([en if en is not None else 0.0 for en in [e1, e2, e3, e4]])
-                        st.session_state['c3_e_res'] = round(total_e, 2)
+                # --- FORMULAIRE FIN DE RECHARGE ---
+                with st.form("form_fin"):
+                    # On place le % souhaité en premier pour le calcul
+                    p_cible = st.number_input("% souhaité", 0, 100, value=85)
+                    diff_cible = max(0, p_cible - p_depart_val)
 
-                st.markdown(
-                    f"<div style='background-color: #1e2130; padding: 10px; border-radius: 5px; border-left: 5px solid #ff4b4b; margin-top: 10px;'>"
-                    f"📊 <b>Résumé :</b> Temps {st.session_state.get('c3_t_res', '0:00')} | Énergie {st.session_state.get('c3_e_res', 0.0)} kWh"
-                    f"</div>", 
-                    unsafe_allow_html=True
-                )
-
-                # --- PARTIE RÉTABLIE : LIEU ET COÛT EN MENU DÉROULANT ---
-                with st.expander("📍 Lieu et Tarification", expanded=False):
-                    lieu_base = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla", "Autre"])
-                    lieu_final = lieu_base
-                    if lieu_base == "Autre":
-                        lieu_autre = st.text_input("Précisez le lieu")
-                        if lieu_autre: lieu_final = lieu_autre
+                    # RÉCAPITULATIF EN HAUT DU FORMULAIRE
+                    st.info(f"🔋 **KM de départ :** {int(km_depart_val):,} km".replace(',', ' ') + 
+                            f"  \n⚡ **% batterie à ajouter : {int(diff_cible)}%** (Basé sur **{int(p_depart_val)}%** au départ)")
                     
-                    prix = st.number_input("Coût €/kWh", value=0.1579, format="%.4f")
+                    st.form_submit_button("🔄 RECALCULER LE BESOIN")
+                    
+                    st.markdown("---")
+                    st.subheader("🏁 Fin de la recharge")
+                    date_f = st.date_input("Date de fin", datetime.now(), format="DD/MM/YYYY")
+                    p_fin = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Ex: 85")
+                    
+                    st.markdown("#### 🧮 Calculs de session")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.write("**Temps (H:MM)**")
+                        t1 = st.text_input("Sess. 1 *", value="", placeholder="ex: 2:38")
+                        t2 = st.text_input("Sess. 2", value="")
+                        t3 = st.text_input("Sess. 3", value="")
+                        t4 = st.text_input("Sess. 4", value="")
+                        
+                        total_m_preview = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
+                        if total_m_preview > 0:
+                            st.success(f"⏱ Total : {minutes_vers_temps(total_m_preview)}")
+                        st.form_submit_button("⏱ VALIDER TEMPS (Optionnel)")
+                    
+                    with c2:
+                        st.write("**Énergie (kWh)**")
+                        e1 = st.number_input("kWh 1 *", 0.0, step=0.1, value=None)
+                        e2 = st.number_input("kWh 2", 0.0, step=0.1, value=None)
+                        e3 = st.number_input("kWh 3", 0.0, step=0.1, value=None)
+                        e4 = st.number_input("kWh 4", 0.0, step=0.1, value=None)
+                        
+                        total_e_preview = sum([en if en is not None else 0.0 for en in [e1, e2, e3, e4]])
+                        if total_e_preview > 0:
+                            st.success(f"🔌 Total : {total_e_preview:.2f} kWh")
+                        st.form_submit_button("🔌 VALIDER ÉNERGIE (Optionnel)")
 
-                if st.button("✅ ENREGISTRER LA FIN"):
-                    if p_fin is None or 'c3_t_res' not in st.session_state:
-                        st.error("⚠️ Manque % final ou calculs.")
+                    with st.expander("📍 Lieu et Tarification", expanded=False):
+                        lieu_base = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla", "Autre"])
+                        lieu_autre = st.text_input("Si Autre, précisez")
+                        prix = st.number_input("Coût €/kWh", value=0.1579, format="%.4f")
+
+                    btn_finir = st.form_submit_button("✅ ENREGISTRER LA FIN ET FERMER")
+
+                if btn_finir:
+                    if p_fin is None or not t1 or e1 is None:
+                        st.error("⚠️ Veuillez remplir les champs obligatoires (*) pour enregistrer.")
                     else:
+                        total_m = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
+                        t_res = minutes_vers_temps(total_m)
+                        total_e = sum([en if en is not None else 0.0 for en in [e1, e2, e3, e4]])
+                        lieu_final = lieu_autre if lieu_base == "Autre" and lieu_autre else lieu_base
                         ligne_reelle = idx_ligne + 1
+                        
                         sheet.update_cell(ligne_reelle, 1, date_f.strftime("%d/%m/%Y"))
                         sheet.update_cell(ligne_reelle, 4, f"{p_fin}%")
-                        sheet.update_cell(ligne_reelle, 5, st.session_state['c3_t_res'])
-                        sheet.update_cell(ligne_reelle, 6, str(st.session_state['c3_e_res']).replace('.', ','))
+                        sheet.update_cell(ligne_reelle, 5, t_res)
+                        sheet.update_cell(ligne_reelle, 6, str(round(total_e, 2)).replace('.', ','))
                         sheet.update_cell(ligne_reelle, 10, str(prix).replace('.', ','))
                         sheet.update_cell(ligne_reelle, 12, lieu_final)
                         
-                        for k in ['c3_t_res', 'c3_e_res']:
-                            if k in st.session_state: del st.session_state[k]
-                        st.success("Recharge clôturée !")
+                        st.success("Recharge enregistrée !")
                         st.rerun()
+
             else:
+                # --- NOUVELLE CHARGE ---
                 st.subheader("🚀 Nouvelle charge")
                 last_km = 0
                 for r in valeurs[3:]:
@@ -232,7 +236,8 @@ with tab_saisie:
                     p_souhait = st.number_input("% souhaité", 0, 100, value=85)
 
                 if p_dep_saisie is not None:
-                    st.info(f"⚡ **Batterie à ajouter : {int(p_souhait - p_dep_saisie)}%**")
+                    diff_debut = max(0, p_souhait - p_dep_saisie)
+                    st.info(f"⚡ **Batterie à ajouter : {int(diff_debut)}%**")
 
                 if st.button("📝 ENREGISTRER LE DÉPART"):
                     if p_dep_saisie is None:
@@ -242,6 +247,7 @@ with tab_saisie:
                         sheet.append_row([date_d.strftime("%d/%m/%Y"), km_v, "", f"{p_dep_saisie}%", "", ""], value_input_option="USER_ENTERED")
                         st.success("Départ enregistré !")
                         st.rerun()
+
         except Exception as e:
             st.error(f"Erreur : {e}")
 
