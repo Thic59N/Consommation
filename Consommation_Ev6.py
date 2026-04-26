@@ -135,7 +135,6 @@ with tab_saisie:
             charge_en_cloture = False
             if len(valeurs) >= 4:
                 derniere = valeurs[-1]
-                # Si la ligne a une date et un kilométrage mais pas de kWh (colonne 6 / index 5)
                 if len(derniere) >= 2 and derniere[1] != "" and (len(derniere) <= 5 or (len(derniere) > 5 and (derniere[5] == "" or derniere[5] is None))):
                     charge_en_cloture = True
                     ligne_depart_data = derniere
@@ -149,37 +148,40 @@ with tab_saisie:
                 p_fin = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Ex: 80")
                 
                 st.markdown("---")
-                
-                # --- NOUVELLE LOGIQUE DYNAMIQUE ---
                 st.markdown("#### 🧮 Calculs")
+                
+                # Le nombre de sessions reste hors formulaire pour adapter l'UI dynamiquement
                 nb_sessions = st.number_input("Nombre de sessions de charge", min_value=1, max_value=20, value=4)
                 
                 c1, c2 = st.columns(2)
-                t_inputs = []
-                e_inputs = []
                 
                 with c1:
-                    st.write("**Temps (H:MM)**")
-                    for i in range(nb_sessions):
-                        label = f"Sess. {i+1} *" if i == 0 else f"Sess. {i+1}"
-                        val_t = st.text_input(label, value="", placeholder="Ex: 2:38", key=f"t_in_{i}")
-                        t_inputs.append(val_t)
-                    
-                    if st.button("⏱️ Valider Temps"):
-                        total_min = sum([temps_vers_minutes(t) for t in t_inputs])
-                        st.session_state['temps_final_ev6'] = minutes_vers_temps(total_min)
+                    with st.form("form_temps"):
+                        st.write("**Temps (H:MM)**")
+                        t_inputs = []
+                        for i in range(nb_sessions):
+                            label = f"Sess. {i+1} *" if i == 0 else f"Sess. {i+1}"
+                            val_t = st.text_input(label, value="", placeholder="Ex: 2:38", key=f"t_in_{i}")
+                            t_inputs.append(val_t)
+                        
+                        if st.form_submit_button("⏱️ Valider Temps"):
+                            total_min = sum([temps_vers_minutes(t) for t in t_inputs])
+                            st.session_state['temps_final_ev6'] = minutes_vers_temps(total_min)
+                            st.rerun()
                 
                 with c2:
-                    st.write("**Énergie (kWh)**")
-                    for i in range(nb_sessions):
-                        label = f"kWh {i+1} *" if i == 0 else f"kWh {i+1}"
-                        val_e = st.number_input(label, 0.0, step=0.1, value=None, key=f"e_in_{i}")
-                        e_inputs.append(val_e)
-                        
-                    if st.button("🔌 Valider Énergie"):
-                        total_e = sum([en if en is not None else 0.0 for en in e_inputs])
-                        st.session_state['energie_finale_ev6'] = round(total_e, 2)
-                # ----------------------------------
+                    with st.form("form_energie"):
+                        st.write("**Énergie (kWh)**")
+                        e_inputs = []
+                        for i in range(nb_sessions):
+                            label = f"kWh {i+1} *" if i == 0 else f"kWh {i+1}"
+                            val_e = st.number_input(label, 0.0, step=0.1, value=None, key=f"e_in_{i}")
+                            e_inputs.append(val_e)
+                            
+                        if st.form_submit_button("🔌 Valider Énergie"):
+                            total_e = sum([en if en is not None else 0.0 for en in e_inputs])
+                            st.session_state['energie_finale_ev6'] = round(total_e, 2)
+                            st.rerun()
 
                 res_t = st.session_state.get('temps_final_ev6', "0:00")
                 res_e = st.session_state.get('energie_finale_ev6', 0.0)
@@ -201,7 +203,7 @@ with tab_saisie:
                     
                     if st.form_submit_button("✅ TOUT ENREGISTRER DANS SHEETS"):
                         if p_fin is None or 'temps_final_ev6' not in st.session_state or 'energie_finale_ev6' not in st.session_state:
-                            st.error("⚠️ Veuillez remplir le % final et valider les calculs.")
+                            st.error("⚠️ Veuillez remplir le % final et valider les calculs (Temps et Énergie).")
                         else:
                             num_ligne = len(valeurs)
                             sheet.update_cell(num_ligne, 1, date_f.strftime("%d/%m/%Y"))
@@ -271,5 +273,5 @@ with tab_visualisation:
                 st.dataframe(df[::-1], use_container_width=True)
             else:
                 st.info("Pas encore de données pour cette année.")
-        except:
-            st.info("Onglet non trouvé.")
+        except Exception as e:
+            st.info(f"Onglet non trouvé : {e}")
