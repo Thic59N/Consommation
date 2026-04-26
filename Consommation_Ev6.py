@@ -66,6 +66,7 @@ def minutes_vers_temps(total_min):
     return f"{h}:{m:02d}"
 
 # --- CONNEXION ---
+@st.cache_resource
 def connecter_sheet():
     scope = ["https://www.googleapis.com/auth/spreadsheets"]
     sheet_id = "12lz9BdZspahJwwc4K85pe5eJhYGbK_79dNDErjUX-Og"
@@ -246,7 +247,7 @@ with tab_visualisation:
     if doc:
         try:
             sheet = doc.worksheet(f"Recharge {annee}")
-            valeurs = sheet.get_all_values()
+            # valeurs = sheet.get_all_values()
             if len(valeurs) > 3:
                 rows = valeurs[3:]
 
