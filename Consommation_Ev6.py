@@ -123,10 +123,13 @@ with col_d:
     st.markdown("</div>", unsafe_allow_html=True)
 
 st.divider()
+# Connexion unique, partagée entre les deux tabs
+doc = connecter_sheet()
+
 tab_saisie, tab_visualisation = st.tabs(["📝 Saisie", "📊 Historique Sheets"])
 
 with tab_saisie:
-    doc = connecter_sheet()
+    # doc = connecter_sheet()
     if doc:
         try:
             sheet = doc.worksheet(f"Recharge {annee}")
@@ -240,33 +243,30 @@ with tab_saisie:
 
 with tab_visualisation:
     st.markdown(f"### 📊 Dashboard {annee}")
-    doc = connecter_sheet()
     if doc:
         try:
             sheet = doc.worksheet(f"Recharge {annee}")
             valeurs = sheet.get_all_values()
             if len(valeurs) > 3:
                 rows = valeurs[3:]
-                col_km = [extraire_nombre(r[1]) for r in rows if len(r) > 1 and r[1] != ""]
-                
-                km_total = col_km[-1] if col_km else 0
-                somme_km = (col_km[-1] - col_km[0]) if len(col_km) > 1 else 0
-                
-                col_conso = [extraire_nombre(r[8]) for r in rows if len(r) > 8 and extraire_nombre(r[8]) > 0]
-                moy_conso = sum(col_conso) / len(col_conso) if col_conso else 0.0
-                
-                col_prix = [extraire_nombre(r[9]) for r in rows if len(r) > 9 and extraire_nombre(r[9]) > 0]
-                moy_prix_kwh = sum(col_prix) / len(col_prix) if col_prix else 0.1579
-                
-                cout_100 = (moy_conso * moy_prix_kwh)
 
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Km Total", f"{km_total:,.0f} km".replace(',', ' '))
-                c2.metric("Somme Km", f"{somme_km:,.0f} km".replace(',', ' '))
-                c3.metric("Moy. Conso", f"{moy_conso:.2f} kWh/100")
-                c4.metric("Coût/100km", f"{cout_100:.2f} €")
-                
-                st.divider()
+                if st.button("📊 Calculer les statistiques"):
+                    col_km = [extraire_nombre(r[1]) for r in rows if len(r) > 1 and r[1] != ""]
+                    km_total = col_km[-1] if col_km else 0
+                    somme_km = (col_km[-1] - col_km[0]) if len(col_km) > 1 else 0
+                    col_conso = [extraire_nombre(r[8]) for r in rows if len(r) > 8 and extraire_nombre(r[8]) > 0]
+                    moy_conso = sum(col_conso) / len(col_conso) if col_conso else 0.0
+                    col_prix = [extraire_nombre(r[9]) for r in rows if len(r) > 9 and extraire_nombre(r[9]) > 0]
+                    moy_prix_kwh = sum(col_prix) / len(col_prix) if col_prix else 0.1579
+                    cout_100 = moy_conso * moy_prix_kwh
+
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Km Total", f"{km_total:,.0f} km".replace(',', ' '))
+                    c2.metric("Somme Km", f"{somme_km:,.0f} km".replace(',', ' '))
+                    c3.metric("Moy. Conso", f"{moy_conso:.2f} kWh/100")
+                    c4.metric("Coût/100km", f"{cout_100:.2f} €")
+                    st.divider()
+
                 df = pd.DataFrame(rows, columns=valeurs[2])
                 st.dataframe(df[::-1], use_container_width=True)
             else:
