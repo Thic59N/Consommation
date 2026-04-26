@@ -208,12 +208,25 @@ with tab_saisie:
                         lieu_final = lieu_autre if lieu_base == "Autre" and lieu_autre else lieu_base
                         ligne_reelle = idx_ligne + 1
                         
+                        # Mise à jour onglet Principal
                         sheet.update_cell(ligne_reelle, 1, date_f.strftime("%d/%m/%Y"))
                         sheet.update_cell(ligne_reelle, 4, f"{p_fin}%")
                         sheet.update_cell(ligne_reelle, 5, t_res)
                         sheet.update_cell(ligne_reelle, 6, str(round(total_e, 2)).replace('.', ','))
                         sheet.update_cell(ligne_reelle, 10, str(prix).replace('.', ','))
                         sheet.update_cell(ligne_reelle, 12, lieu_final)
+
+                        # --- MAJ ONGLET OCTOPUS ---
+                        try:
+                            sheet_octopus = doc.worksheet("Octopus")
+                            dates_octo = sheet_octopus.col_values(1)
+                            # On cherche la ligne correspondant à la date de début (ligne_data[0])
+                            # ou on prend la dernière ligne vide si besoin
+                            row_octo = len(dates_octo) 
+                            sheet_octopus.update_cell(row_octo, 4, f"{p_fin}%") # Col D: % Obtenu
+                            sheet_octopus.update_cell(row_octo, 6, str(round(total_e, 2)).replace('.', ',')) # Col F: Energie reçu
+                        except:
+                            pass # Évite de bloquer si l'onglet Octopus a un souci
                         
                         st.success("Recharge enregistrée !")
                         st.rerun()
@@ -244,7 +257,28 @@ with tab_saisie:
                         st.error("⚠️ Saisir le % actuel.")
                     else:
                         km_v = int(extraire_nombre(km_in))
-                        sheet.append_row([date_d.strftime("%d/%m/%Y"), km_v, "", f"{p_dep_saisie}%", "", ""], value_input_option="USER_ENTERED")
+                        date_str = date_d.strftime("%d/%m/%Y")
+                        diff_debut = max(0, p_souhait - p_dep_saisie)
+                        
+                        # Enregistrement onglet Principal
+                        sheet.append_row([date_str, km_v, "", f"{p_dep_saisie}%", "", ""], value_input_option="USER_ENTERED")
+                        
+                        # --- ENREGISTREMENT ONGLET OCTOPUS ---
+                        try:
+                            sheet_octopus = doc.worksheet("Octopus")
+                            # Colonne A: Date, B: Demandé, C: %Objectif
+                            # Les colonnes E, G, H, I ont des formules, on envoie des cellules vides pour elles
+                            # pour ne pas écraser les formules si elles sont déjà présentes sur la ligne
+                            new_row_octo = [
+                                date_str,           # A: Date
+                                f"{diff_debut}%",   # B: Demandé
+                                f"{p_souhait}%",    # C: %Objectif
+                                ""                  # D: % Obtenu (vide pour l'instant)
+                            ]
+                            sheet_octopus.append_row(new_row_octo, value_input_option="USER_ENTERED")
+                        except Exception as e:
+                            st.warning(f"Note: Impossible de mettre à jour l'onglet Octopus ({e})")
+
                         st.success("Départ enregistré !")
                         st.rerun()
 
