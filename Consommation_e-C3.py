@@ -166,27 +166,32 @@ with tab_saisie:
                     p_fin = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Ex: 85")
                     
                     st.markdown("#### 🧮 Calculs de session")
+                    nb_sessions = st.number_input("Nombre de sessions de charge", min_value=1, max_value=20, value=4)
+                    
                     c1, c2 = st.columns(2)
+                    t_inputs = []
+                    e_inputs = []
+                    
                     with c1:
                         st.write("**Temps (H:MM)**")
-                        t1 = st.text_input("Sess. 1 *", value="", placeholder="ex: 2:38")
-                        t2 = st.text_input("Sess. 2", value="")
-                        t3 = st.text_input("Sess. 3", value="")
-                        t4 = st.text_input("Sess. 4", value="")
+                        for i in range(nb_sessions):
+                            label = f"Sess. {i+1} *" if i == 0 else f"Sess. {i+1}"
+                            val_t = st.text_input(label, value="", placeholder="Ex: 2:38", key=f"t_in_{i}")
+                            t_inputs.append(val_t)
                         
-                        total_m_preview = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
+                        total_m_preview = sum([temps_vers_minutes(t) for t in t_inputs])
                         if total_m_preview > 0:
                             st.success(f"⏱ Total : {minutes_vers_temps(total_m_preview)}")
                         st.form_submit_button("⏱ VALIDER TEMPS (Optionnel)")
                     
                     with c2:
                         st.write("**Énergie (kWh)**")
-                        e1 = st.number_input("kWh 1 *", 0.0, step=0.1, value=None)
-                        e2 = st.number_input("kWh 2", 0.0, step=0.1, value=None)
-                        e3 = st.number_input("kWh 3", 0.0, step=0.1, value=None)
-                        e4 = st.number_input("kWh 4", 0.0, step=0.1, value=None)
+                        for i in range(nb_sessions):
+                            label = f"kWh {i+1} *" if i == 0 else f"kWh {i+1}"
+                            val_e = st.number_input(label, 0.0, step=0.1, value=None, key=f"e_in_{i}")
+                            e_inputs.append(val_e)
                         
-                        total_e_preview = sum([en if en is not None else 0.0 for en in [e1, e2, e3, e4]])
+                        total_e_preview = sum([en if en is not None else 0.0 for en in e_inputs])
                         if total_e_preview > 0:
                             st.success(f"🔌 Total : {total_e_preview:.2f} kWh")
                         st.form_submit_button("🔌 VALIDER ÉNERGIE (Optionnel)")
@@ -199,12 +204,12 @@ with tab_saisie:
                     btn_finir = st.form_submit_button("✅ ENREGISTRER LA FIN ET FERMER")
 
                 if btn_finir:
-                    if p_fin is None or not t1 or e1 is None:
+                    if p_fin is None or not t_inputs[0] or e_inputs[0] is None:
                         st.error("⚠️ Veuillez remplir les champs obligatoires (*) pour enregistrer.")
                     else:
-                        total_m = sum([temps_vers_minutes(t) for t in [t1, t2, t3, t4]])
+                        total_m = sum([temps_vers_minutes(t) for t in t_inputs])
                         t_res = minutes_vers_temps(total_m)
-                        total_e = sum([en if en is not None else 0.0 for en in [e1, e2, e3, e4]])
+                        total_e = sum([en if en is not None else 0.0 for en in e_inputs])
                         lieu_final = lieu_autre if lieu_base == "Autre" and lieu_autre else lieu_base
                         ligne_reelle = idx_ligne + 1
                         
@@ -220,8 +225,6 @@ with tab_saisie:
                         try:
                             sheet_octopus = doc.worksheet("Octopus")
                             dates_octo = sheet_octopus.col_values(1)
-                            # On cherche la ligne correspondant à la date de début (ligne_data[0])
-                            # ou on prend la dernière ligne vide si besoin
                             row_octo = len(dates_octo) 
                             sheet_octopus.update_cell(row_octo, 4, f"{p_fin}%") # Col D: % Obtenu
                             sheet_octopus.update_cell(row_octo, 6, str(round(total_e, 2)).replace('.', ',')) # Col F: Energie reçu
@@ -266,9 +269,6 @@ with tab_saisie:
                         # --- ENREGISTREMENT ONGLET OCTOPUS ---
                         try:
                             sheet_octopus = doc.worksheet("Octopus")
-                            # Colonne A: Date, B: Demandé, C: %Objectif
-                            # Les colonnes E, G, H, I ont des formules, on envoie des cellules vides pour elles
-                            # pour ne pas écraser les formules si elles sont déjà présentes sur la ligne
                             new_row_octo = [
                                 date_str,           # A: Date
                                 f"{diff_debut}%",   # B: Demandé
