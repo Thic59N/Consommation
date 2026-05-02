@@ -148,26 +148,19 @@ with tab_saisie:
                     if len(ligne_precedente) > 3:
                         p_depart_val = extraire_nombre(ligne_precedente[3])
                 
-                # --- FORMULAIRE FIN DE RECHARGE ---
+                # --- CALCUL DYNAMIQUE HORS FORMULAIRE ---
+                st.subheader("🏁 Fin de la recharge")
+                st.info(f"🔋 **KM de départ :** {int(km_depart_val):,} km".replace(',', ' ') + 
+                        f"  \n⚡ **Batterie au départ : {int(p_depart_val)}%**")
+                
+                # Nombre de sessions HORS formulaire pour être dynamique
+                nb_sessions = st.number_input("Nombre de sessions de charge", min_value=1, max_value=20, value=4)
+                
                 with st.form("form_fin"):
-                    # On place le % souhaité en premier pour le calcul
-                    p_cible = st.number_input("% souhaité", 0, 100, value=85)
-                    diff_cible = max(0, p_cible - p_depart_val)
-
-                    # RÉCAPITULATIF EN HAUT DU FORMULAIRE
-                    st.info(f"🔋 **KM de départ :** {int(km_depart_val):,} km".replace(',', ' ') + 
-                            f"  \n⚡ **% batterie à ajouter : {int(diff_cible)}%** (Basé sur **{int(p_depart_val)}%** au départ)")
-                    
-                    st.form_submit_button("🔄 RECALCULER LE BESOIN")
-                    
-                    st.markdown("---")
-                    st.subheader("🏁 Fin de la recharge")
-                    date_f = st.date_input("Date de fin", datetime.now(), format="DD/MM/YYYY")
                     p_fin = st.number_input("% Batterie final *", 0, 100, value=None, placeholder="Ex: 85")
+                    date_f = st.date_input("Date de fin", datetime.now(), format="DD/MM/YYYY")
                     
-                    st.markdown("#### 🧮 Calculs de session")
-                    nb_sessions = st.number_input("Nombre de sessions de charge", min_value=1, max_value=20, value=4)
-                    
+                    st.markdown("#### 🧮 Détails des sessions")
                     c1, c2 = st.columns(2)
                     t_inputs = []
                     e_inputs = []
@@ -178,11 +171,6 @@ with tab_saisie:
                             label = f"Sess. {i+1} *" if i == 0 else f"Sess. {i+1}"
                             val_t = st.text_input(label, value="", placeholder="Ex: 2:38", key=f"t_in_{i}")
                             t_inputs.append(val_t)
-                        
-                        total_m_preview = sum([temps_vers_minutes(t) for t in t_inputs])
-                        if total_m_preview > 0:
-                            st.success(f"⏱ Total : {minutes_vers_temps(total_m_preview)}")
-                        st.form_submit_button("⏱ VALIDER TEMPS (Optionnel)")
                     
                     with c2:
                         st.write("**Énergie (kWh)**")
@@ -190,11 +178,14 @@ with tab_saisie:
                             label = f"kWh {i+1} *" if i == 0 else f"kWh {i+1}"
                             val_e = st.number_input(label, 0.0, step=0.1, value=None, key=f"e_in_{i}")
                             e_inputs.append(val_e)
-                        
+
+                    st.markdown("---")
+                    # Boutons de calculs optionnels restaurés dans le formulaire
+                    if st.form_submit_button("⏱ / 🔌 CALCULER LES TOTAUX (Optionnel)"):
+                        total_m_preview = sum([temps_vers_minutes(t) for t in t_inputs])
                         total_e_preview = sum([en if en is not None else 0.0 for en in e_inputs])
-                        if total_e_preview > 0:
-                            st.success(f"🔌 Total : {total_e_preview:.2f} kWh")
-                        st.form_submit_button("🔌 VALIDER ÉNERGIE (Optionnel)")
+                        if total_m_preview > 0: st.success(f"⏱ Total Temps : {minutes_vers_temps(total_m_preview)}")
+                        if total_e_preview > 0: st.success(f"🔌 Total Énergie : {total_e_preview:.2f} kWh")
 
                     with st.expander("📍 Lieu et Tarification", expanded=False):
                         lieu_base = st.selectbox("Lieu", ["Maison", "Borne Publique", "Ionity", "Tesla", "Autre"])
@@ -213,7 +204,6 @@ with tab_saisie:
                         lieu_final = lieu_autre if lieu_base == "Autre" and lieu_autre else lieu_base
                         ligne_reelle = idx_ligne + 1
                         
-                        # Mise à jour onglet Principal
                         sheet.update_cell(ligne_reelle, 1, date_f.strftime("%d/%m/%Y"))
                         sheet.update_cell(ligne_reelle, 4, f"{p_fin}%")
                         sheet.update_cell(ligne_reelle, 5, t_res)
@@ -221,15 +211,14 @@ with tab_saisie:
                         sheet.update_cell(ligne_reelle, 10, str(prix).replace('.', ','))
                         sheet.update_cell(ligne_reelle, 12, lieu_final)
 
-                        # --- MAJ ONGLET OCTOPUS ---
                         try:
                             sheet_octopus = doc.worksheet("Octopus")
                             dates_octo = sheet_octopus.col_values(1)
                             row_octo = len(dates_octo) 
-                            sheet_octopus.update_cell(row_octo, 4, f"{p_fin}%") # Col D: % Obtenu
-                            sheet_octopus.update_cell(row_octo, 6, str(round(total_e, 2)).replace('.', ',')) # Col F: Energie reçu
+                            sheet_octopus.update_cell(row_octo, 4, f"{p_fin}%")
+                            sheet_octopus.update_cell(row_octo, 6, str(round(total_e, 2)).replace('.', ','))
                         except:
-                            pass # Évite de bloquer si l'onglet Octopus a un souci
+                            pass
                         
                         st.success("Recharge enregistrée !")
                         st.rerun()
@@ -263,18 +252,11 @@ with tab_saisie:
                         date_str = date_d.strftime("%d/%m/%Y")
                         diff_debut = max(0, p_souhait - p_dep_saisie)
                         
-                        # Enregistrement onglet Principal
                         sheet.append_row([date_str, km_v, "", f"{p_dep_saisie}%", "", ""], value_input_option="USER_ENTERED")
                         
-                        # --- ENREGISTREMENT ONGLET OCTOPUS ---
                         try:
                             sheet_octopus = doc.worksheet("Octopus")
-                            new_row_octo = [
-                                date_str,           # A: Date
-                                f"{diff_debut}%",   # B: Demandé
-                                f"{p_souhait}%",    # C: %Objectif
-                                ""                  # D: % Obtenu (vide pour l'instant)
-                            ]
+                            new_row_octo = [date_str, f"{diff_debut}%", f"{p_souhait}%", ""]
                             sheet_octopus.append_row(new_row_octo, value_input_option="USER_ENTERED")
                         except Exception as e:
                             st.warning(f"Note: Impossible de mettre à jour l'onglet Octopus ({e})")
